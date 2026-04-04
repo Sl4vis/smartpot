@@ -1,4 +1,4 @@
-export const OFFLINE_AFTER_MINUTES = 10;
+export const OFFLINE_AFTER_MINUTES = 2;
 
 export function getDeviceStatus(readingOrTimestamp) {
   if (readingOrTimestamp && typeof readingOrTimestamp === 'object' && readingOrTimestamp.status && 'is_online' in readingOrTimestamp) {
@@ -20,7 +20,7 @@ export function getDeviceStatus(readingOrTimestamp) {
       minutesSinceLastSync: null,
       lastSyncAt: null,
       lastSuccessfulMessageAt: null,
-      relativeLabel: 'ešte neprišli žiadne dáta',
+      relativeLabel: 'zatiaľ bez dát',
       compactLabel: 'bez dát',
       absoluteLabel: 'Žiadna správa zo senzora',
       warningMessage: 'ESP32 ešte neposlal žiadne meranie.'
@@ -40,11 +40,11 @@ export function getDeviceStatus(readingOrTimestamp) {
     minutesSinceLastSync: minutes,
     lastSyncAt: timestamp,
     lastSuccessfulMessageAt: timestamp,
-    relativeLabel: `pred ${formatMinutesSk(minutes)}`,
-    compactLabel: isOffline ? `offline · ${formatMinutesCompact(minutes)}` : `pred ${formatMinutesCompact(minutes)}`,
+    relativeLabel: minutes < 1 ? 'práve teraz' : `pred ${formatMinutesSk(minutes)}`,
+    compactLabel: isOffline ? 'offline' : 'online',
     absoluteLabel: formatAbsoluteDateTime(timestamp),
     warningMessage: isOffline
-      ? `ESP32 neposlal nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minút.`
+      ? `ESP32 neposlal nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minúty.`
       : null
   };
 }
@@ -64,12 +64,10 @@ function normalizeBackendStatus(status) {
     minutesSinceLastSync: minutes,
     lastSyncAt,
     lastSuccessfulMessageAt,
-    relativeLabel: lastSyncAt ? `pred ${formatMinutesSk(minutes)}` : 'ešte neprišli žiadne dáta',
-    compactLabel: status.is_no_data
-      ? 'bez dát'
-      : status.is_offline
-        ? `offline · ${formatMinutesCompact(minutes)}`
-        : `pred ${formatMinutesCompact(minutes)}`,
+    relativeLabel: lastSyncAt
+      ? (minutes < 1 ? 'práve teraz' : `pred ${formatMinutesSk(minutes)}`)
+      : 'zatiaľ bez dát',
+    compactLabel: status.is_no_data ? 'bez dát' : status.is_offline ? 'offline' : 'online',
     absoluteLabel: lastSyncAt ? formatAbsoluteDateTime(lastSyncAt) : 'Žiadna správa zo senzora',
     warningMessage: status.warning_message || null
   };
@@ -88,27 +86,9 @@ export function formatAbsoluteDateTime(timestamp) {
 
 export function formatMinutesSk(minutes) {
   if (minutes == null) return 'neznámo';
-  if (minutes < 1) return 'menej ako minútou';
-  if (minutes < 60) return `${minutes} ${pluralizeSk(minutes, 'minútou', 'minútami', 'minútami')}`;
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} ${pluralizeSk(hours, 'hodinou', 'hodinami', 'hodinami')}`;
-
-  const days = Math.floor(hours / 24);
-  return `${days} ${pluralizeSk(days, 'dňom', 'dňami', 'dňami')}`;
-}
-
-export function formatMinutesCompact(minutes) {
-  if (minutes == null) return '—';
-  if (minutes < 1) return 'teraz';
+  if (minutes < 1) return 'chvíľou';
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours} h`;
   return `${Math.floor(hours / 24)} d`;
-}
-
-function pluralizeSk(value, one, few, many) {
-  if (value === 1) return one;
-  if (value >= 2 && value <= 4) return few;
-  return many;
 }
