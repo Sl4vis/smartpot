@@ -37,7 +37,7 @@ function buildDeviceStatus(latestReading) {
     last_sync_at: timestamp,
     last_successful_message_at: timestamp,
     warning_message: isOffline
-      ? `Zariadenie neposlalo nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minúty.`
+      ? `Zariadenie neposlalo nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minút.`
       : null
   };
 }
