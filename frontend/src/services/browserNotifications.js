@@ -97,7 +97,7 @@ export async function subscribeToPush(vapidPublicKey) {
 
   return registration.pushManager.subscribe({
     userVisibleOnly: true,
-    appServerKey: urlBase64ToUint8Array(vapidPublicKey)
+    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
   });
 }
 
