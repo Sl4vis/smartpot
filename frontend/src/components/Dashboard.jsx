@@ -25,7 +25,7 @@ const DEMO = [
   },
   {
     plant: { id: 'demo-2', name: 'Fikus', species: 'Ficus benjamina', device_id: 'esp32-002', location: 'Spálňa', min_soil_moisture: 35, min_light: 400 },
-    latest_reading: { soil_moisture: 28, temperature: 20.1, humidity: 45, light_lux: 320, created_at: new Date(Date.now() - 3 * 60000).toISOString() },
+    latest_reading: { soil_moisture: 28, temperature: 20.1, humidity: 45, light_lux: 320, created_at: new Date(Date.now() - 25 * 60000).toISOString() },
     latest_analysis: { health_score: 42, status: 'warning', summary: 'Treba poliať, pôda je suchá.' },
     unread_alerts: 2
   },
@@ -147,11 +147,17 @@ function PlantCard({ data, i }) {
   const statusLabel = score >= 70 ? 'V poriadku' : score >= 40 ? 'Pozor' : 'Kritické';
   const statusBg = score >= 70 ? 'bg-green-50 text-green-700' : score >= 40 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600';
 
+  const deviceTone = status.isOnline
+    ? 'text-green-700'
+    : status.isOffline
+      ? 'text-red-600'
+      : 'text-sage-500';
+
   return (
     <Link to={`/plant/${plant.id}`}
       className={`card p-5 block fade-in delay-${i + 1} group`}>
 
-      <div className="flex items-start justify-between mb-4 gap-3">
+      <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3 min-w-0">
           <GaugeRing value={score} size={48} strokeWidth={4} color={scoreColor}>
             <span className="text-xs font-bold">{score}</span>
@@ -161,7 +167,7 @@ function PlantCard({ data, i }) {
             <p className="text-xs text-sage-500 truncate">{plant.species}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2">
           {unread_alerts > 0 && (
             <span className="w-5 h-5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold flex items-center justify-center">
               {unread_alerts}
@@ -186,16 +192,11 @@ function PlantCard({ data, i }) {
           warn={reading.light_lux < (plant.min_light || 200)} />
       </div>
 
-      <div className="mt-4 pt-3 border-t border-sage-100 flex items-end justify-between gap-3">
-        <span className="text-xs text-sage-400 truncate">{plant.location}</span>
-        <div className="text-right flex-shrink-0">
-          <div className="flex items-center justify-end gap-1 text-xs font-semibold">
-            <span className="text-sage-400 truncate max-w-[120px]">{plant.device_id || 'Bez zariadenia'}</span>
-            <span className={status.isOnline ? 'text-green-700' : status.isOffline ? 'text-red-600' : 'text-sage-500'}>
-              {status.label}
-            </span>
-          </div>
-          <p className="text-[11px] text-sage-400 mt-0.5">{status.absoluteLabel}</p>
+      <div className="mt-4 pt-3 border-t border-sage-100 flex items-center justify-between text-xs gap-3">
+        <span className="truncate text-sage-400">{plant.location}</span>
+        <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
+          <span className="truncate text-sage-400">{plant.device_id || 'bez zariadenia'}</span>
+          <span className={`font-semibold ${deviceTone}`}>{status.label}</span>
         </div>
       </div>
     </Link>
