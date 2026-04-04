@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
+  BellOff,
   Check,
   CheckCheck,
   Droplets,
@@ -10,13 +11,7 @@ import {
   Leaf,
   WifiOff,
   Activity,
-  CircleHelp,
-  BellRing,
-  BellOff,
-  Send,
-  Smartphone,
-  Download,
-  ShieldCheck
+  CircleHelp
 } from 'lucide-react';
 import {
   getAlerts,
@@ -25,8 +20,7 @@ import {
   markAllAlertsRead,
   getNotificationConfig,
   subscribePushNotifications,
-  unsubscribePushNotifications,
-  sendPushTestNotification
+  unsubscribePushNotifications
 } from '../services/api';
 import {
   isNotificationsEnabledByUser,
@@ -37,9 +31,7 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
   isNotificationApiSupported,
-  isPushSupported,
   requiresInstalledAppForPush,
-  getPushSupportHint,
   isStandaloneMode,
   isIosDevice
 } from '../services/browserNotifications';
@@ -147,7 +139,6 @@ export default function AlertsPage() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(isNotificationsEnabledByUser());
   const [permission, setPermission] = useState(getNotificationPermission());
   const [permissionBusy, setPermissionBusy] = useState(false);
-  const [sendingTest, setSendingTest] = useState(false);
   const [pushConfig, setPushConfig] = useState({ push_available: false, vapid_public_key: null, digest_interval_minutes: 60 });
   const [hasPushSubscription, setHasPushSubscription] = useState(false);
 
@@ -202,14 +193,29 @@ export default function AlertsPage() {
     }
   }
 
-  async function handleEnableNotifications() {
+  async function handleNotificationToggle() {
+    if (notificationsEnabled) {
+      try {
+        const subscription = await getExistingPushSubscription();
+        if (subscription?.endpoint) {
+          await unsubscribePushNotifications(subscription.endpoint).catch(() => null);
+        }
+        await unsubscribeFromPush().catch(() => null);
+      } finally {
+        setNotificationsEnabledByUser(false);
+        setNotificationsEnabled(false);
+        setHasPushSubscription(false);
+      }
+      return;
+    }
+
     if (!pushConfig.push_available || !pushConfig.vapid_public_key) {
-      alert('Backend ešte nemá nastavené VAPID kľúče pre web push.');
+      alert('Push upozornenia ešte nie sú pripravené na serveri.');
       return;
     }
 
     if (requiresInstalledAppForPush()) {
-      alert('Na iPhone si najprv pridaj SmartPot na plochu a otvor ho z ikonky. Potom klikni znovu na povolenie upozornení.');
+      alert('Na iPhone si najprv pridaj SmartPot na plochu a otvor ho z ikonky. Potom klikni znovu na zvonček.');
       return;
     }
 
@@ -222,7 +228,13 @@ export default function AlertsPage() {
     try {
       const result = await requestNotificationPermission();
       setPermission(result.permission);
-      if (!result.granted) return;
+
+      if (!result.granted) {
+        if (result.permission === 'denied') {
+          alert('Upozornenia sú v prehliadači blokované. Povoľ ich pri adrese stránky a skús to znova.');
+        }
+        return;
+      }
 
       const subscription = await subscribeToPush(pushConfig.vapid_public_key);
       const serialized = subscription.toJSON ? subscription.toJSON() : JSON.parse(JSON.stringify(subscription));
@@ -233,46 +245,14 @@ export default function AlertsPage() {
       setHasPushSubscription(true);
     } catch (error) {
       console.error('Enable push notifications failed:', error);
-      alert('Nepodarilo sa zapnúť push notifikácie. Skontroluj povolenie v prehliadači a otvorenie cez HTTPS.');
+      alert('Nepodarilo sa zapnúť push upozornenia. Skontroluj povolenie v prehliadači a otvorenie cez HTTPS.');
     } finally {
       setPermissionBusy(false);
     }
   }
 
-  async function handleDisableNotifications() {
-    try {
-      const subscription = await getExistingPushSubscription();
-      if (subscription?.endpoint) {
-        await unsubscribePushNotifications(subscription.endpoint).catch(() => null);
-      }
-      await unsubscribeFromPush().catch(() => null);
-    } finally {
-      setNotificationsEnabledByUser(false);
-      setNotificationsEnabled(false);
-      setHasPushSubscription(false);
-    }
-  }
-
-  async function handleSendTestNotification() {
-    setSendingTest(true);
-    try {
-      const subscription = await getExistingPushSubscription();
-      if (!subscription) {
-        alert('Najprv povoľ upozornenia pre tento prehliadač.');
-        return;
-      }
-
-      const serialized = subscription.toJSON ? subscription.toJSON() : JSON.parse(JSON.stringify(subscription));
-      await sendPushTestNotification(serialized);
-    } catch (error) {
-      console.error('Push test notification failed:', error);
-      alert('Test push sa nepodarilo odoslať. Skontroluj, či má backend nastavené VAPID kľúče a subscription je stále platný.');
-    } finally {
-      setSendingTest(false);
-    }
-  }
-
   const unread = alerts.filter(alert => !alert.read).length;
+
   const deviceStatusCards = useMemo(() => {
     return overview.map(item => {
       const status = item.device_status || getDeviceStatus(item.latest_reading);
@@ -321,8 +301,14 @@ export default function AlertsPage() {
   }, [alerts]);
 
   const notificationIssuesCount = deviceStatusCards.filter(card => card.issues.length > 0).length;
-  const supportHint = getPushSupportHint();
-  const deliveryLabel = notificationsEnabled && hasPushSubscription ? 'Skutočný web push' : 'Vypnuté';
+  const compactNotificationHint = getCompactNotificationHint({
+    notificationsEnabled,
+    hasPushSubscription,
+    permission,
+    pushAvailable: pushConfig.push_available,
+    digestInterval: pushConfig.digest_interval_minutes,
+    issuesCount: notificationIssuesCount
+  });
 
   return (
     <div className="space-y-5">
@@ -334,94 +320,36 @@ export default function AlertsPage() {
           </p>
         </div>
 
-        <button
-          onClick={handleMarkAllRead}
-          disabled={markingAll || unread === 0}
-          className="btn-secondary justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {markingAll ? <CheckCheck className="w-4 h-4 animate-pulse" /> : <CheckCheck className="w-4 h-4" />}
-          Označiť všetky ako prečítané
-        </button>
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <NotificationToggleButton
+            enabled={notificationsEnabled && hasPushSubscription}
+            busy={permissionBusy}
+            unsupported={!isNotificationApiSupported()}
+            onClick={handleNotificationToggle}
+          />
+
+          <button
+            onClick={handleMarkAllRead}
+            disabled={markingAll || unread === 0}
+            className="btn-secondary justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {markingAll ? <CheckCheck className="w-4 h-4 animate-pulse" /> : <CheckCheck className="w-4 h-4" />}
+            Označiť všetky ako prečítané
+          </button>
+        </div>
       </div>
 
-      <section className="card p-5 space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-green-900">Push notifikácie</h2>
-            <p className="text-sm text-sage-500 mt-1">
-              Po povolení bude backend posielať približne raz za {pushConfig.digest_interval_minutes || 60} minút súhrn rastlín, ktoré treba poliať, majú málo svetla alebo sú offline.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {!notificationsEnabled ? (
-              <button onClick={handleEnableNotifications} disabled={permissionBusy || !pushConfig.push_available} className="btn-primary disabled:opacity-50">
-                {permissionBusy ? <BellRing className="w-4 h-4 animate-pulse" /> : <BellRing className="w-4 h-4" />}
-                Povoliť upozornenia
-              </button>
-            ) : (
-              <button onClick={handleDisableNotifications} className="btn-secondary">
-                <BellOff className="w-4 h-4" /> Vypnúť upozornenia
-              </button>
-            )}
-
-            <button
-              onClick={handleSendTestNotification}
-              disabled={!notificationsEnabled || permission !== 'granted' || sendingTest}
-              className="btn-secondary disabled:opacity-50"
-            >
-              <Send className={`w-4 h-4 ${sendingTest ? 'animate-pulse' : ''}`} />
-              Poslať test
-            </button>
-          </div>
+      <div className="rounded-2xl border border-sage-100 bg-white/80 px-4 py-3 flex items-start gap-3 shadow-sm">
+        <div className={`mt-0.5 w-9 h-9 rounded-xl flex items-center justify-center ${notificationsEnabled && hasPushSubscription ? 'bg-green-50 text-green-700' : 'bg-sage-50 text-sage-500'}`}>
+          {notificationsEnabled && hasPushSubscription ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
         </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <NotificationInfoCard
-            label="Doručovanie"
-            value={deliveryLabel}
-            hint={notificationsEnabled ? 'Push sa pošle aj keď je web zatvorený, pokiaľ je subscription aktívna.' : 'Zatiaľ sa neposielajú žiadne push notifikácie.'}
-            tone={notificationsEnabled ? 'green' : 'slate'}
-          />
-          <NotificationInfoCard
-            label="Backend push"
-            value={pushConfig.push_available ? 'Pripravené' : 'Chýba konfigurácia'}
-            hint={pushConfig.push_available ? 'Server má VAPID kľúče a vie odoslať push.' : 'Nastav WEB_PUSH_VAPID_PUBLIC_KEY a WEB_PUSH_VAPID_PRIVATE_KEY.'}
-            tone={pushConfig.push_available ? 'green' : 'red'}
-          />
-          <NotificationInfoCard
-            label="Povolenie prehliadača"
-            value={permissionLabel(permission)}
-            hint={permission === 'granted' ? 'Prehliadač môže zobrazovať push notifikácie.' : 'Ak je blokované, povoľ to v nastaveniach prehliadača.'}
-            tone={permission === 'granted' ? 'green' : permission === 'denied' ? 'red' : 'amber'}
-          />
-          <NotificationInfoCard
-            label="Rastliny s problémom"
-            value={String(notificationIssuesCount)}
-            hint="Počíta sa offline stav, bez dát, nízka vlhkosť a málo svetla."
-            tone={notificationIssuesCount > 0 ? 'amber' : 'green'}
-          />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-green-900">
+            {notificationsEnabled && hasPushSubscription ? 'Push upozornenia sú zapnuté' : 'Push upozornenia sú vypnuté'}
+          </p>
+          <p className="text-sm text-sage-500 mt-0.5">{compactNotificationHint}</p>
         </div>
-
-        <div className="rounded-2xl border border-sage-100 bg-sage-50 px-4 py-3 text-sm text-sage-600 space-y-2">
-          <div className="flex items-start gap-2">
-            <ShieldCheck className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
-            <p>{supportHint}</p>
-          </div>
-          {isIosDevice() && !isStandaloneMode() && (
-            <div className="flex items-start gap-2">
-              <Download className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
-              <p>Na iPhone otvor Share menu v Safari alebo Chrome/Edge a zvoľ <strong>Pridať na plochu</strong>. Push sa zapína až v nainštalovanej web appke.</p>
-            </div>
-          )}
-          {!isPushSupported() && (
-            <div className="flex items-start gap-2">
-              <Smartphone className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
-              <p>Na Androide odporúčam Chrome alebo Edge. Na desktope funguje najspoľahlivejšie Chrome, Edge a Safari.</p>
-            </div>
-          )}
-        </div>
-      </section>
+      </div>
 
       <section className="space-y-3">
         <div>
@@ -562,20 +490,24 @@ export default function AlertsPage() {
   );
 }
 
-function NotificationInfoCard({ label, value, hint, tone = 'slate' }) {
-  const tones = {
-    green: 'bg-green-50 text-green-700 border-green-100',
-    red: 'bg-red-50 text-red-600 border-red-100',
-    amber: 'bg-amber-50 text-amber-700 border-amber-100',
-    slate: 'bg-sage-50 text-sage-600 border-sage-100'
-  };
+function NotificationToggleButton({ enabled, busy, unsupported, onClick }) {
+  const label = unsupported
+    ? 'Push upozornenia nie sú dostupné v tomto prehliadači'
+    : enabled
+      ? 'Vypnúť push upozornenia'
+      : 'Zapnúť push upozornenia';
 
   return (
-    <div className={`rounded-2xl border p-4 ${tones[tone] || tones.slate}`}>
-      <p className="text-xs font-medium uppercase tracking-wide opacity-75">{label}</p>
-      <p className="text-lg font-bold mt-1">{value}</p>
-      <p className="text-xs mt-2 opacity-80">{hint}</p>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy || unsupported}
+      title={label}
+      aria-label={label}
+      className={`inline-flex items-center justify-center w-11 h-11 rounded-2xl border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${enabled ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100' : 'border-sage-200 bg-white text-sage-500 hover:bg-sage-50'}`}
+    >
+      {enabled ? <Bell className={`w-4 h-4 ${busy ? 'animate-pulse' : ''}`} /> : <BellOff className={`w-4 h-4 ${busy ? 'animate-pulse' : ''}`} />}
+    </button>
   );
 }
 
@@ -603,19 +535,42 @@ function DeviceStatusBadge({ status }) {
   );
 }
 
-function permissionLabel(permission) {
-  if (permission === 'granted') return 'Povolené';
-  if (permission === 'denied') return 'Blokované';
-  if (permission === 'unsupported') return 'Nepodporované';
-  return 'Čaká sa';
+function getCompactNotificationHint({ notificationsEnabled, hasPushSubscription, permission, pushAvailable, digestInterval, issuesCount }) {
+  if (!pushAvailable) {
+    return 'Push upozornenia ešte nie sú pripravené na serveri.';
+  }
+
+  if (permission === 'denied') {
+    return 'Upozornenia sú v prehliadači blokované. Povoľ ich pri adrese stránky.';
+  }
+
+  if (requiresInstalledAppForPush()) {
+    return 'Na iPhone ich zapneš po pridaní SmartPot na plochu a otvorení z ikonky.';
+  }
+
+  if (notificationsEnabled && hasPushSubscription) {
+    return issuesCount > 0
+      ? `Pri problémoch dostaneš približne raz za ${digestInterval || 60} minút stručný súhrn.`
+      : 'Aktívny je jemný hodinový súhrn, keď sa objaví problém s niektorou rastlinou.';
+  }
+
+  if (permission === 'unsupported') {
+    return 'Tento prehliadač nepodporuje push upozornenia.';
+  }
+
+  if (isIosDevice() && !isStandaloneMode()) {
+    return 'Na iPhone sa zvonček zapína až v nainštalovanej web appke.';
+  }
+
+  return 'Klikni na zvonček, ak chceš diskrétne hodinové upozornenia na rastliny s problémom.';
 }
 
 function detectPlatformLabel() {
   if (typeof navigator === 'undefined') return 'unknown';
   const ua = navigator.userAgent.toLowerCase();
-  if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')) return 'ios';
+  if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod')) return 'ios';
   if (ua.includes('android')) return 'android';
-  if (ua.includes('mac')) return 'macos';
+  if (ua.includes('mac')) return 'mac';
   if (ua.includes('win')) return 'windows';
   return 'web';
 }
