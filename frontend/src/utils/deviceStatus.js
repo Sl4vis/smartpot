@@ -1,10 +1,6 @@
 export const OFFLINE_AFTER_MINUTES = 2;
 
 export function getDeviceStatus(readingOrTimestamp) {
-  if (readingOrTimestamp && typeof readingOrTimestamp === 'object' && readingOrTimestamp.status && 'is_online' in readingOrTimestamp) {
-    return normalizeBackendStatus(readingOrTimestamp);
-  }
-
   const timestamp = typeof readingOrTimestamp === 'string'
     ? readingOrTimestamp
     : readingOrTimestamp?.created_at || null;
@@ -41,45 +37,23 @@ export function getDeviceStatus(readingOrTimestamp) {
     lastSyncAt: timestamp,
     lastSuccessfulMessageAt: timestamp,
     relativeLabel: `pred ${formatMinutesSk(minutes)}`,
-    compactLabel: isOffline ? 'Offline' : 'Online',
+    compactLabel: isOffline ? `offline · ${formatMinutesCompact(minutes)}` : `pred ${formatMinutesCompact(minutes)}`,
     absoluteLabel: formatAbsoluteDateTime(timestamp),
     warningMessage: isOffline
-      ? `ESP32 neposlal nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minúty.`
+      ? `ESP32 neposlal nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minút.`
       : null
-  };
-}
-
-function normalizeBackendStatus(status) {
-  const minutes = status.minutes_since_last_sync;
-  const lastSyncAt = status.last_sync_at || null;
-  const lastSuccessfulMessageAt = status.last_successful_message_at || lastSyncAt;
-
-  return {
-    status: status.status,
-    label: status.label,
-    isOnline: Boolean(status.is_online),
-    isOffline: Boolean(status.is_offline),
-    isNoData: Boolean(status.is_no_data),
-    stale: Boolean(status.is_stale),
-    minutesSinceLastSync: minutes,
-    lastSyncAt,
-    lastSuccessfulMessageAt,
-    relativeLabel: lastSyncAt ? `pred ${formatMinutesSk(minutes)}` : 'ešte neprišli žiadne dáta',
-    compactLabel: status.is_no_data ? 'Bez dát' : status.is_offline ? 'Offline' : 'Online',
-    absoluteLabel: lastSyncAt ? formatAbsoluteDateTime(lastSyncAt) : 'Žiadna správa zo senzora',
-    warningMessage: status.warning_message || null
   };
 }
 
 export function formatAbsoluteDateTime(timestamp) {
   if (!timestamp) return '—';
-  const d = new Date(timestamp);
-  const day = d.getDate();
-  const month = d.getMonth() + 1;
-  const year = d.getFullYear();
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  return `${day}.${month}.${year} - ${hours}:${minutes}`;
+  return new Date(timestamp).toLocaleString('sk', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 }
 
 export function formatMinutesSk(minutes) {
@@ -92,6 +66,15 @@ export function formatMinutesSk(minutes) {
 
   const days = Math.floor(hours / 24);
   return `${days} ${pluralizeSk(days, 'dňom', 'dňami', 'dňami')}`;
+}
+
+export function formatMinutesCompact(minutes) {
+  if (minutes == null) return '—';
+  if (minutes < 1) return 'teraz';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  return `${Math.floor(hours / 24)} d`;
 }
 
 function pluralizeSk(value, one, few, many) {
