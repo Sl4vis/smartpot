@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Droplets,
@@ -8,9 +8,9 @@ import {
   Plus,
   AlertTriangle,
   ChevronRight,
-  Activity,
   WifiOff,
-  CircleHelp
+  CircleHelp,
+  Activity
 } from 'lucide-react';
 import { getDashboardOverview } from '../services/api';
 import GaugeRing from './GaugeRing';
@@ -37,27 +37,51 @@ const DEMO = [
   }
 ];
 
+const REFRESH_INTERVAL_MS = 20000;
+
 export default function Dashboard() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [demo, setDemo] = useState(false);
 
   useEffect(() => {
-    (async () => {
+    let mounted = true;
+
+    const load = async ({ silent = false } = {}) => {
       try {
         const d = await getDashboardOverview();
+        if (!mounted) return;
+
         if (d?.length > 0) {
           setData(d);
-        } else {
+          setDemo(false);
+        } else if (!silent) {
           setData(DEMO);
           setDemo(true);
         }
       } catch {
+        if (!mounted || silent) return;
         setData(DEMO);
         setDemo(true);
+      } finally {
+        if (mounted && !silent) setLoading(false);
       }
-      setLoading(false);
-    })();
+    };
+
+    load();
+
+    const interval = window.setInterval(() => load({ silent: true }), REFRESH_INTERVAL_MS);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') load({ silent: true });
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   if (loading) {
@@ -147,16 +171,8 @@ function PlantCard({ data, i }) {
   const statusLabel = score >= 70 ? 'V poriadku' : score >= 40 ? 'Pozor' : 'Kritické';
   const statusBg = score >= 70 ? 'bg-green-50 text-green-700' : score >= 40 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600';
 
-  const deviceTone = status.isOnline
-    ? 'text-green-700'
-    : status.isOffline
-      ? 'text-red-600'
-      : 'text-sage-500';
-
   return (
-    <Link to={`/plant/${plant.id}`}
-      className={`card p-5 block fade-in delay-${i + 1} group`}>
-
+    <Link to={`/plant/${plant.id}`} className={`card p-5 block fade-in delay-${i + 1} group`}>
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3 min-w-0">
           <GaugeRing value={score} size={48} strokeWidth={4} color={scoreColor}>
@@ -195,8 +211,8 @@ function PlantCard({ data, i }) {
       <div className="mt-4 pt-3 border-t border-sage-100 flex items-center justify-between text-xs gap-3">
         <span className="truncate text-sage-400">{plant.location}</span>
         <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
-          <span className="truncate text-sage-400">{plant.device_id || 'bez zariadenia'}</span>
-          <span className={`font-semibold ${deviceTone}`}>{status.label}</span>
+          <span className="truncate text-sage-400">{plant.device_id || 'Bez zariadenia'}</span>
+          <span className={`font-semibold ${getStatusTextClass(status)}`}>{status.label}</span>
         </div>
       </div>
     </Link>
@@ -215,4 +231,10 @@ function Metric({ icon: Icon, label, value, unit, color, warn }) {
       </div>
     </div>
   );
+}
+
+function getStatusTextClass(status) {
+  if (status?.isOnline) return 'text-green-600';
+  if (status?.isOffline) return 'text-red-600';
+  return 'text-sage-500';
 }
