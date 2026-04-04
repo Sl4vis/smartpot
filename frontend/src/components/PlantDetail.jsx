@@ -13,17 +13,13 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
-  PencilLine,
-  WifiOff,
-  Activity,
-  CircleHelp,
-  Cpu
+  PencilLine
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getPlant, getSensorHistory, getLatestReading, analyzeHealth, waterPlant, getWateringHistory, getAnalysisHistory, deletePlant } from '../services/api';
 import GaugeRing from './GaugeRing';
 import PlantEditModal from './PlantEditModal';
-import { getDeviceStatus } from '../utils/deviceStatus';
+import { getDeviceStatus, formatAbsoluteDateTime } from '../utils/deviceStatus';
 
 const DEMO_PLANT = {
   id: 'demo-1',
@@ -174,6 +170,12 @@ export default function PlantDetail() {
   const r = latest || {};
   const activeMetric = METRICS.find(m => m.key === metric);
   const deviceStatus = plant?.device_status || getDeviceStatus(r.created_at);
+  const updatedLabel = r.created_at ? formatAbsoluteDateTime(r.created_at) : '—';
+  const deviceTone = deviceStatus.isOnline
+    ? 'text-green-700'
+    : deviceStatus.isOffline
+      ? 'text-red-600'
+      : 'text-sage-500';
 
   const thinned = thinData(history);
   const chartData = thinned.map(h => ({
@@ -201,6 +203,12 @@ export default function PlantDetail() {
             <p className="text-sm text-sage-500 truncate">{plant.species} · {plant.location}</p>
           </div>
         </div>
+
+        <div className="hidden sm:flex flex-col items-end text-right flex-shrink-0">
+          <span className="text-xs text-sage-400">{plant.device_id || 'bez zariadenia'}</span>
+          <span className={`text-sm font-semibold ${deviceTone}`}>{deviceStatus.label}</span>
+        </div>
+
         <div className="flex items-center gap-2 flex-shrink-0">
           <button onClick={() => setEditOpen(true)} className="btn-secondary px-3 py-2.5" title="Upraviť rastlinu">
             <PencilLine className="w-4 h-4" />
@@ -214,21 +222,10 @@ export default function PlantDetail() {
         </div>
       </div>
 
-      <section className="card p-5">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div>
-            <h2 className="text-base font-semibold text-green-900">Zariadenie {plant.device_id || 'ESP32'}</h2>
-            <p className="text-sm text-sage-500 mt-1">{deviceStatus.isNoData ? 'Zatiaľ neprišli žiadne merania.' : `Posledná aktualizácia: ${deviceStatus.absoluteLabel}`}</p>
-          </div>
-
-          <div className="sm:text-right">
-            <StatusBadge status={deviceStatus} />
-            {!deviceStatus.isNoData && (
-              <p className="text-xs text-sage-400 mt-2">{deviceStatus.relativeLabel}</p>
-            )}
-          </div>
-        </div>
-      </section>
+      <div className="sm:hidden flex items-center justify-between rounded-2xl border border-sage-100 bg-white px-4 py-3">
+        <span className="text-xs text-sage-400">{plant.device_id || 'bez zariadenia'}</span>
+        <span className={`text-sm font-semibold ${deviceTone}`}>{deviceStatus.label}</span>
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {METRICS.map(m => {
@@ -251,7 +248,7 @@ export default function PlantDetail() {
       </div>
 
       <div className="card p-5">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-3">
           <h2 className="font-semibold text-green-900">{activeMetric.label}</h2>
           <div className="flex gap-1 bg-sage-50 rounded-lg p-1">
             {[6, 12, 24, 48].map(h => (
@@ -294,6 +291,11 @@ export default function PlantDetail() {
             </AreaChart>
           </ResponsiveContainer>
         )}
+        <div className="mt-3 flex justify-end">
+          <p className="text-xs text-sage-400 text-right">
+            Aktualizované: <span className="font-medium text-sage-500">{updatedLabel}</span>
+          </p>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -381,28 +383,3 @@ export default function PlantDetail() {
     </div>
   );
 }
-
-function StatusBadge({ status }) {
-  if (status.isOnline) {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-green-50 text-green-700 text-sm font-semibold">
-        <Activity className="w-4 h-4" /> Online
-      </span>
-    );
-  }
-
-  if (status.isOffline) {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 text-red-600 text-sm font-semibold">
-        <WifiOff className="w-4 h-4" /> Offline
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sage-50 text-sage-600 text-sm font-semibold">
-      <CircleHelp className="w-4 h-4" /> Bez dát
-    </span>
-  );
-}
-
