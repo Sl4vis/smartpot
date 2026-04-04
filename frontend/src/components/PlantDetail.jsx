@@ -17,7 +17,6 @@ import {
   WifiOff,
   Activity,
   CircleHelp,
-  TriangleAlert,
   Cpu
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -215,32 +214,20 @@ export default function PlantDetail() {
         </div>
       </div>
 
-      <section className="card p-5 space-y-4">
-        <div className="flex items-start justify-between gap-4">
+      <section className="card p-5">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
-            <h2 className="text-base font-semibold text-green-900">Stav zariadenia</h2>
-            <p className="text-sm text-sage-500 mt-1">Prehľad konektivity a poslednej správy z ESP32.</p>
+            <h2 className="text-base font-semibold text-green-900">Zariadenie {plant.device_id || 'ESP32'}</h2>
+            <p className="text-sm text-sage-500 mt-1">{deviceStatus.isNoData ? 'Zatiaľ neprišli žiadne merania.' : `Posledná aktualizácia: ${deviceStatus.absoluteLabel}`}</p>
           </div>
-          <StatusBadge status={deviceStatus} />
-        </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <StatusMetric label="Aktuálny stav" value={deviceStatus.label} icon={getStatusIcon(deviceStatus)} />
-          <StatusMetric label="Posledná synchronizácia" value={deviceStatus.isNoData ? '—' : deviceStatus.relativeLabel} icon={Clock} />
-          <StatusMetric label="Posledná úspešná správa z ESP32" value={deviceStatus.absoluteLabel} icon={Cpu} />
-        </div>
-
-        {deviceStatus.stale && (
-          <div className={`rounded-2xl border px-4 py-3 flex items-start gap-3 ${deviceStatus.isNoData ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-            <TriangleAlert className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-semibold">
-                {deviceStatus.isNoData ? 'Zariadenie ešte neposlalo žiadne dáta' : 'Dáta zo zariadenia meškajú'}
-              </p>
-              <p className="text-xs mt-1 opacity-90">{deviceStatus.warningMessage}</p>
-            </div>
+          <div className="sm:text-right">
+            <StatusBadge status={deviceStatus} />
+            {!deviceStatus.isNoData && (
+              <p className="text-xs text-sage-400 mt-2">{deviceStatus.relativeLabel}</p>
+            )}
           </div>
-        )}
+        </div>
       </section>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -395,18 +382,6 @@ export default function PlantDetail() {
   );
 }
 
-function StatusMetric({ label, value, icon: Icon }) {
-  return (
-    <div className="rounded-2xl border border-sage-100 bg-sage-50/70 px-4 py-3">
-      <div className="flex items-center gap-2 text-sage-500 text-xs mb-2">
-        <Icon className="w-3.5 h-3.5" />
-        <span>{label}</span>
-      </div>
-      <p className="text-sm font-semibold text-green-900">{value}</p>
-    </div>
-  );
-}
-
 function StatusBadge({ status }) {
   if (status.isOnline) {
     return (
@@ -431,8 +406,3 @@ function StatusBadge({ status }) {
   );
 }
 
-function getStatusIcon(status) {
-  if (status.isOnline) return Activity;
-  if (status.isOffline) return WifiOff;
-  return CircleHelp;
-}
