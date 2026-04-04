@@ -3,12 +3,13 @@ const router = express.Router();
 const { supabase } = require('../models/supabase');
 const { buildDeviceStatus } = require('../utils/deviceStatus');
 
+const ALERT_COOLDOWN_MINUTES = Number(process.env.ALERT_COOLDOWN_MINUTES || 60);
+
 // GET /api/sensors/devices/available - Zariadenia ktoré posielajú dáta ale nemajú priradenú rastlinu
 router.get('/devices/available', async (req, res) => {
   try {
     const currentPlantId = req.query.currentPlantId || null;
 
-    // Všetky unikátne device_id zo sensor_readings
     const { data: allDevices, error: e1 } = await supabase
       .from('sensor_readings')
       .select('device_id')
@@ -16,10 +17,8 @@ router.get('/devices/available', async (req, res) => {
 
     if (e1) throw e1;
 
-    // Unikátne device_id
     const uniqueDevices = [...new Set((allDevices || []).map(d => d.device_id).filter(Boolean))];
 
-    // Zariadenia už priradené k rastline
     const { data: plants, error: e2 } = await supabase
       .from('plants')
       .select('id, device_id');
@@ -37,7 +36,6 @@ router.get('/devices/available', async (req, res) => {
         .filter(Boolean)
     );
 
-    // Rozdeľ na dostupné a priradené
     const available = uniqueDevices.filter(id => !assignedIds.has(id));
     const assigned = uniqueDevices.filter(id => assignedIds.has(id));
 
@@ -47,8 +45,8 @@ router.get('/devices/available', async (req, res) => {
 
     res.json({
       data: {
-        available,   // zariadenia bez rastliny + aktuálne zariadenie editovanej rastliny
-        assigned,    // zariadenia s inou rastlinou
+        available,
+        assigned,
         all: uniqueDevices,
         current_device: currentPlant?.device_id || null
       }
@@ -161,24 +159,55 @@ router.get('/:deviceId/history', async (req, res) => {
   }
 });
 
+async function getRecentAlertTypes(plantId) {
+  const since = new Date(Date.now() - ALERT_COOLDOWN_MINUTES * 60000).toISOString();
+  const { data, error } = await supabase
+    .from('alerts')
+    .select('type')
+    .eq('plant_id', plantId)
+    .gte('created_at', since);
+
+  if (error) throw error;
+  return new Set((data || []).map(item => item.type));
+}
+
 async function checkThresholds(deviceId, reading) {
   try {
     const { data: plant } = await supabase
       .from('plants').select('*').eq('device_id', deviceId).single();
     if (!plant) return;
+
+    const recentTypes = await getRecentAlertTypes(plant.id);
     const alerts = [];
-    if (reading.soil_moisture < (plant.min_soil_moisture || 30)) {
-      alerts.push({ device_id: deviceId, plant_id: plant.id, type: 'low_moisture',
-        message: `Nízka vlhkosť pôdy: ${reading.soil_moisture}% (minimum: ${plant.min_soil_moisture}%)`, severity: 'warning' });
+
+    if (reading.soil_moisture < (plant.min_soil_moisture || 30) && !recentTypes.has('low_moisture')) {
+      alerts.push({
+        device_id: deviceId,
+        plant_id: plant.id,
+        type: 'low_moisture',
+        message: `Nízka vlhkosť pôdy: ${reading.soil_moisture}% (minimum: ${plant.min_soil_moisture}%)`,
+        severity: 'warning'
+      });
     }
-    if (reading.temperature > (plant.max_temperature || 35)) {
-      alerts.push({ device_id: deviceId, plant_id: plant.id, type: 'high_temperature',
-        message: `Vysoká teplota: ${reading.temperature}°C (maximum: ${plant.max_temperature}°C)`, severity: 'warning' });
+    if (reading.temperature > (plant.max_temperature || 35) && !recentTypes.has('high_temperature')) {
+      alerts.push({
+        device_id: deviceId,
+        plant_id: plant.id,
+        type: 'high_temperature',
+        message: `Vysoká teplota: ${reading.temperature}°C (maximum: ${plant.max_temperature}°C)`,
+        severity: 'warning'
+      });
     }
-    if (reading.light_lux < (plant.min_light || 200)) {
-      alerts.push({ device_id: deviceId, plant_id: plant.id, type: 'low_light',
-        message: `Málo svetla: ${reading.light_lux} lux (minimum: ${plant.min_light} lux)`, severity: 'info' });
+    if (reading.light_lux < (plant.min_light || 200) && !recentTypes.has('low_light')) {
+      alerts.push({
+        device_id: deviceId,
+        plant_id: plant.id,
+        type: 'low_light',
+        message: `Málo svetla: ${reading.light_lux} lux (minimum: ${plant.min_light} lux)`,
+        severity: 'info'
+      });
     }
+
     if (alerts.length > 0) await supabase.from('alerts').insert(alerts);
   } catch (err) {
     console.error('Threshold check error:', err.message);
