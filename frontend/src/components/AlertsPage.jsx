@@ -5,17 +5,15 @@ import {
   BellOff,
   Check,
   CheckCheck,
+  ChevronDown,
+  ChevronUp,
   Droplets,
   Sun,
   Thermometer,
-  Leaf,
-  WifiOff,
-  Activity,
-  CircleHelp
+  Leaf
 } from 'lucide-react';
 import {
   getAlerts,
-  getDashboardOverview,
   markAlertRead,
   markAllAlertsRead,
   getNotificationConfig,
@@ -35,7 +33,6 @@ import {
   isStandaloneMode,
   isIosDevice
 } from '../services/browserNotifications';
-import { getDeviceStatus } from '../utils/deviceStatus';
 
 const DEMO_ALERTS = [
   {
@@ -73,27 +70,6 @@ const DEMO_ALERTS = [
   }
 ];
 
-const DEMO_OVERVIEW = [
-  {
-    plant: { id: 'plant-1', name: 'Kaktus', species: 'Kaktus', location: 'Obývačka', device_id: 'esp32-001', min_soil_moisture: 20, min_light: 500 },
-    latest_reading: { soil_moisture: 19, temperature: 24, humidity: 35, light_lux: 32, created_at: new Date(Date.now() - 65 * 60000).toISOString() },
-    latest_analysis: { watering_needed: true },
-    unread_alerts: 2
-  },
-  {
-    plant: { id: 'plant-2', name: 'Monstera', species: 'Monstera deliciosa', location: 'Spálňa', device_id: 'esp32-002', min_soil_moisture: 40, min_light: 300 },
-    latest_reading: { soil_moisture: 48, temperature: 22, humidity: 57, light_lux: 420, created_at: new Date().toISOString() },
-    latest_analysis: { watering_needed: false },
-    unread_alerts: 0
-  },
-  {
-    plant: { id: 'plant-3', name: 'Fikus', species: 'Ficus', location: 'Kuchyňa', device_id: 'esp32-003', min_soil_moisture: 30, min_light: 300 },
-    latest_reading: null,
-    latest_analysis: null,
-    unread_alerts: 0
-  }
-];
-
 const icons = {
   low_moisture: Droplets,
   high_temperature: Thermometer,
@@ -117,12 +93,7 @@ function getPlantTitle(alert) {
 }
 
 function getPlantSubtitle(alert) {
-  const pieces = [
-    alert.plant?.species,
-    alert.plant?.location,
-    alert.device_id
-  ].filter(Boolean);
-
+  const pieces = [alert.plant?.species, alert.plant?.location, alert.device_id].filter(Boolean);
   return pieces.length ? pieces.join(' · ') : 'Bez detailu rastliny';
 }
 
@@ -133,7 +104,6 @@ function sortGroups(a, b) {
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState([]);
-  const [overview, setOverview] = useState([]);
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(isNotificationsEnabledByUser());
@@ -141,26 +111,24 @@ export default function AlertsPage() {
   const [permissionBusy, setPermissionBusy] = useState(false);
   const [pushConfig, setPushConfig] = useState({ push_available: false, vapid_public_key: null, digest_interval_minutes: 60 });
   const [hasPushSubscription, setHasPushSubscription] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
 
   useEffect(() => {
     (async () => {
       try {
-        const [alertsData, overviewData, configData, existingSubscription] = await Promise.all([
+        const [alertsData, configData, existingSubscription] = await Promise.all([
           getAlerts().catch(() => null),
-          getDashboardOverview().catch(() => null),
           getNotificationConfig().catch(() => null),
           getExistingPushSubscription().catch(() => null)
         ]);
 
         setAlerts(alertsData?.length ? alertsData : DEMO_ALERTS);
-        setOverview(overviewData?.length ? overviewData : DEMO_OVERVIEW);
         if (configData) setPushConfig(configData);
         const hasSubscription = Boolean(existingSubscription);
         setHasPushSubscription(hasSubscription);
         setNotificationsEnabled(isNotificationsEnabledByUser() && hasSubscription);
       } catch {
         setAlerts(DEMO_ALERTS);
-        setOverview(DEMO_OVERVIEW);
       } finally {
         setLoading(false);
       }
@@ -253,29 +221,6 @@ export default function AlertsPage() {
 
   const unread = alerts.filter(alert => !alert.read).length;
 
-  const deviceStatusCards = useMemo(() => {
-    return overview.map(item => {
-      const status = item.device_status || getDeviceStatus(item.latest_reading);
-      const issues = [];
-
-      if (status.isOffline) issues.push('Senzor neposiela nové dáta');
-      if (status.isNoData) issues.push('Zariadenie ešte neposlalo žiadne merania');
-      if (item.latest_reading && item.plant?.min_soil_moisture != null && Number(item.latest_reading.soil_moisture) < Number(item.plant.min_soil_moisture)) {
-        issues.push('Treba poliať');
-      }
-      if (item.latest_reading && item.plant?.min_light != null && Number(item.latest_reading.light_lux) < Number(item.plant.min_light)) {
-        issues.push('Pozor na svetlo');
-      }
-
-      return {
-        plant: item.plant,
-        status,
-        issues,
-        unreadAlerts: item.unread_alerts || 0
-      };
-    });
-  }, [overview]);
-
   const groupedAlerts = useMemo(() => {
     const groups = new Map();
 
@@ -297,17 +242,46 @@ export default function AlertsPage() {
       groups.set(key, current);
     });
 
-    return Array.from(groups.values()).sort(sortGroups);
+    return Array.from(groups.values())
+      .map(group => ({
+        ...group,
+        alerts: [...group.alerts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      }))
+      .sort(sortGroups);
   }, [alerts]);
 
-  const notificationIssuesCount = deviceStatusCards.filter(card => card.issues.length > 0).length;
+  useEffect(() => {
+    setCollapsedGroups(prev => {
+      const next = { ...prev };
+      const validIds = new Set(groupedAlerts.map(group => group.id));
+
+      Object.keys(next).forEach((key) => {
+        if (!validIds.has(key)) delete next[key];
+      });
+
+      groupedAlerts.forEach((group, index) => {
+        if (!(group.id in next)) {
+          next[group.id] = group.unreadCount === 0 ? true : index > 0;
+        }
+      });
+
+      return next;
+    });
+  }, [groupedAlerts]);
+
+  function toggleGroup(groupId) {
+    setCollapsedGroups(prev => ({
+      ...prev,
+      [groupId]: !prev[groupId]
+    }));
+  }
+
   const compactNotificationHint = getCompactNotificationHint({
     notificationsEnabled,
     hasPushSubscription,
     permission,
     pushAvailable: pushConfig.push_available,
-    digestInterval: pushConfig.digest_interval_minutes,
-    issuesCount: notificationIssuesCount
+    digestInterval: pushConfig.digest_interval_minutes
   });
 
   return (
@@ -339,72 +313,14 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-sage-100 bg-white/80 px-4 py-3 flex items-start gap-3 shadow-sm">
-        <div className={`mt-0.5 w-9 h-9 rounded-xl flex items-center justify-center ${notificationsEnabled && hasPushSubscription ? 'bg-green-50 text-green-700' : 'bg-sage-50 text-sage-500'}`}>
-          {notificationsEnabled && hasPushSubscription ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-green-900">
-            {notificationsEnabled && hasPushSubscription ? 'Push upozornenia sú zapnuté' : 'Push upozornenia sú vypnuté'}
-          </p>
-          <p className="text-sm text-sage-500 mt-0.5">{compactNotificationHint}</p>
-        </div>
+      <div className="flex items-center gap-2 text-xs text-sage-500 px-1">
+        {notificationsEnabled && hasPushSubscription ? (
+          <Bell className="w-3.5 h-3.5 text-green-600" />
+        ) : (
+          <BellOff className="w-3.5 h-3.5 text-sage-400" />
+        )}
+        <span>{compactNotificationHint}</span>
       </div>
-
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-base font-semibold text-green-900">Stav zariadení</h2>
-          <p className="text-sm text-sage-500 mt-1">Každá rastlina má vlastný stav senzora a poslednú úspešnú správu z ESP32.</p>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {deviceStatusCards.map((card) => (
-            <div key={card.plant.id} className="card p-4">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                  <h3 className="font-semibold text-green-900">{card.plant.name}</h3>
-                  <p className="text-xs text-sage-500">{[card.plant.species, card.plant.location, card.plant.device_id].filter(Boolean).join(' · ')}</p>
-                </div>
-                <DeviceStatusBadge status={card.status} />
-              </div>
-
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sage-500">Posledná synchronizácia</span>
-                  <span className="font-medium text-green-900">{card.status.isNoData ? '—' : card.status.relativeLabel}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sage-500">Posledná správa z ESP32</span>
-                  <span className="text-sage-500 text-right">{card.status.absoluteLabel}</span>
-                </div>
-              </div>
-
-              {card.issues.length > 0 ? (
-                <div className="mt-3 rounded-2xl bg-amber-50 border border-amber-100 px-3 py-2">
-                  <p className="text-xs font-semibold text-amber-700 mb-1">Treba skontrolovať</p>
-                  <ul className="space-y-1">
-                    {card.issues.map((issue, index) => (
-                      <li key={`${card.plant.id}-${index}`} className="text-xs text-amber-700 flex items-start gap-2">
-                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                        <span>{issue}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : (
-                <div className="mt-3 rounded-2xl bg-green-50 border border-green-100 px-3 py-2 text-xs text-green-700 flex items-center gap-2">
-                  <CheckCheck className="w-3.5 h-3.5" />
-                  Bez aktuálneho problému
-                </div>
-              )}
-
-              {card.unreadAlerts > 0 && (
-                <div className="mt-2 text-xs text-sage-500">Neprečítané alerty: {card.unreadAlerts}</div>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
 
       {loading ? (
         <div className="flex justify-center py-12">
@@ -418,72 +334,92 @@ export default function AlertsPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {groupedAlerts.map((group, index) => (
-            <section key={group.id} className={`card p-4 sm:p-5 fade-in delay-${Math.min(index + 1, 4)}`}>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <div className="w-9 h-9 rounded-xl bg-green-50 text-green-600 flex items-center justify-center">
-                      <Leaf className="w-4 h-4" />
+          {groupedAlerts.map((group, index) => {
+            const isCollapsed = Boolean(collapsedGroups[group.id]);
+
+            return (
+              <section key={group.id} className={`card p-4 sm:p-5 fade-in delay-${Math.min(index + 1, 4)}`}>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  className="w-full text-left flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+                >
+                  <div className="min-w-0 flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
+                      <Leaf className="w-5 h-5" />
                     </div>
-                    <div>
-                      <h2 className="text-base font-semibold text-green-900">{group.title}</h2>
-                      <p className="text-sm text-sage-500 truncate">{group.subtitle}</p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-base font-semibold text-green-900">{group.title}</h2>
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${group.unreadCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}`}>
+                          <Bell className="w-3.5 h-3.5" />
+                          {group.unreadCount > 0 ? `${group.unreadCount} nové` : 'Všetko prečítané'}
+                        </span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-sage-50 text-sage-500 text-[11px] font-semibold">
+                          {group.alerts.length} {group.alerts.length === 1 ? 'upozornenie' : group.alerts.length < 5 ? 'upozornenia' : 'upozornení'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-sage-500 truncate mt-1">{group.subtitle}</p>
+                      <p className="text-xs text-sage-400 mt-1">
+                        Posledné upozornenie: {new Date(group.latestAt).toLocaleString('sk')}
+                      </p>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2 text-xs">
-                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold ${group.unreadCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}`}>
-                    <Bell className="w-3.5 h-3.5" />
-                    {group.unreadCount > 0 ? `${group.unreadCount} neprečítaných` : 'Všetko prečítané'}
-                  </span>
-                </div>
-              </div>
+                  <div className="flex items-center gap-2 text-sage-500 self-start sm:self-center">
+                    <span className="text-xs font-medium">{isCollapsed ? 'Rozbaliť' : 'Zabaliť'}</span>
+                    <span className="w-9 h-9 rounded-xl bg-sage-50 flex items-center justify-center">
+                      {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                    </span>
+                  </div>
+                </button>
 
-              <div className="space-y-3">
-                {group.alerts.map((alert) => {
-                  const Icon = icons[alert.type] || AlertTriangle;
-                  const theme = styles[alert.severity] || styles.info;
+                {!isCollapsed && (
+                  <div className="space-y-3 mt-4">
+                    {group.alerts.map((alert) => {
+                      const Icon = icons[alert.type] || AlertTriangle;
+                      const theme = styles[alert.severity] || styles.info;
 
-                  return (
-                    <div
-                      key={alert.id}
-                      className={`rounded-2xl border p-4 flex items-start gap-4 transition-all ${theme.border} ${alert.read ? 'bg-sage-50/60 opacity-70' : 'bg-white shadow-sm'}`}
-                    >
-                      <div className={`p-2.5 rounded-xl ${theme.bg}`}>
-                        <Icon className={`w-4 h-4 ${theme.icon}`} />
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                          {!alert.read && (
-                            <span className="inline-flex px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[11px] font-semibold">
-                              Nové
-                            </span>
-                          )}
-                          <span className="text-[11px] text-sage-400 font-mono">{alert.device_id}</span>
-                        </div>
-
-                        <p className="text-sm text-green-900">{alert.message}</p>
-                        <p className="text-xs text-sage-400 mt-1.5">{new Date(alert.created_at).toLocaleString('sk')}</p>
-                      </div>
-
-                      {!alert.read && (
-                        <button
-                          onClick={() => handleMarkRead(alert.id)}
-                          className="p-2 rounded-xl hover:bg-green-50 transition-colors flex-shrink-0"
-                          title="Označiť ako prečítané"
+                      return (
+                        <div
+                          key={alert.id}
+                          className={`rounded-2xl border p-4 flex items-start gap-4 transition-all ${theme.border} ${alert.read ? 'bg-sage-50/60 opacity-70' : 'bg-white shadow-sm'}`}
                         >
-                          <Check className="w-4 h-4 text-sage-400" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
+                          <div className={`p-2.5 rounded-xl ${theme.bg}`}>
+                            <Icon className={`w-4 h-4 ${theme.icon}`} />
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                              {!alert.read && (
+                                <span className="inline-flex px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[11px] font-semibold">
+                                  Nové
+                                </span>
+                              )}
+                              <span className="text-[11px] text-sage-400 font-mono">{alert.device_id}</span>
+                            </div>
+
+                            <p className="text-sm text-green-900">{alert.message}</p>
+                            <p className="text-xs text-sage-400 mt-1.5">{new Date(alert.created_at).toLocaleString('sk')}</p>
+                          </div>
+
+                          {!alert.read && (
+                            <button
+                              onClick={() => handleMarkRead(alert.id)}
+                              className="p-2 rounded-xl hover:bg-green-50 transition-colors flex-shrink-0"
+                              title="Označiť ako prečítané"
+                            >
+                              <Check className="w-4 h-4 text-sage-400" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
     </div>
@@ -511,31 +447,7 @@ function NotificationToggleButton({ enabled, busy, unsupported, onClick }) {
   );
 }
 
-function DeviceStatusBadge({ status }) {
-  if (status.isOnline) {
-    return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-50 text-green-700">
-        <Activity className="w-3.5 h-3.5" /> Online
-      </span>
-    );
-  }
-
-  if (status.isOffline) {
-    return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-50 text-red-600">
-        <WifiOff className="w-3.5 h-3.5" /> Offline
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-sage-50 text-sage-600">
-      <CircleHelp className="w-3.5 h-3.5" /> Bez dát
-    </span>
-  );
-}
-
-function getCompactNotificationHint({ notificationsEnabled, hasPushSubscription, permission, pushAvailable, digestInterval, issuesCount }) {
+function getCompactNotificationHint({ notificationsEnabled, hasPushSubscription, permission, pushAvailable, digestInterval }) {
   if (!pushAvailable) {
     return 'Push upozornenia ešte nie sú pripravené na serveri.';
   }
@@ -549,9 +461,7 @@ function getCompactNotificationHint({ notificationsEnabled, hasPushSubscription,
   }
 
   if (notificationsEnabled && hasPushSubscription) {
-    return issuesCount > 0
-      ? `Pri problémoch dostaneš približne raz za ${digestInterval || 60} minút stručný súhrn.`
-      : 'Aktívny je jemný hodinový súhrn, keď sa objaví problém s niektorou rastlinou.';
+    return `Pri problémoch dostaneš približne raz za ${digestInterval || 60} minút stručný súhrn.`;
   }
 
   if (permission === 'unsupported') {
