@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  background: linear-gradient(160deg, #f0fdf4 0%, #fafcfa 50%, #f0fdf4 100%);
+  color: #1a2e1a;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c4ccbb; border-radius: 10px; }
+
+@layer components {
+  .card {
+    @apply bg-white rounded-2xl transition-all duration-300;
+    border: 1px solid rgba(34, 197, 94, 0.08);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  }
+  .card:hover {
+    box-shadow: 0 8px 24px rgba(34, 197, 94, 0.06), 0 2px 8px rgba(0,0,0,0.03);
+    border-color: rgba(34, 197, 94, 0.15);
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200;
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    color: white;
+  }
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(34, 197, 94, 0.25);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200;
+    background: rgba(34, 197, 94, 0.08);
+    color: #16a34a;
+  }
+  .btn-secondary:hover {
+    background: rgba(34, 197, 94, 0.14);
+  }
+
+  .input-field {
+    @apply w-full px-4 py-2.5 rounded-xl text-sm outline-none transition-all duration-200;
+    background: #f6f7f5;
+    border: 1.5px solid transparent;
+  }
+  .input-field:focus {
+    border-color: #22c55e;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.35s ease-out forwards; }
+.delay-1 { animation-delay: 0.05s; opacity: 0; }
+.delay-2 { animation-delay: 0.1s; opacity: 0; }
+.delay-3 { animation-delay: 0.15s; opacity: 0; }
+.delay-4 { animation-delay: 0.2s; opacity: 0; }
