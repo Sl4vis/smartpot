@@ -20,7 +20,7 @@ export function getDeviceStatus(readingOrTimestamp) {
       minutesSinceLastSync: null,
       lastSyncAt: null,
       lastSuccessfulMessageAt: null,
-      relativeLabel: 'zatiaľ bez dát',
+      relativeLabel: 'ešte neprišli žiadne dáta',
       compactLabel: 'bez dát',
       absoluteLabel: 'Žiadna správa zo senzora',
       warningMessage: 'ESP32 ešte neposlal žiadne meranie.'
@@ -40,8 +40,8 @@ export function getDeviceStatus(readingOrTimestamp) {
     minutesSinceLastSync: minutes,
     lastSyncAt: timestamp,
     lastSuccessfulMessageAt: timestamp,
-    relativeLabel: minutes < 1 ? 'práve teraz' : `pred ${formatMinutesSk(minutes)}`,
-    compactLabel: isOffline ? 'offline' : 'online',
+    relativeLabel: `pred ${formatMinutesSk(minutes)}`,
+    compactLabel: isOffline ? 'Offline' : 'Online',
     absoluteLabel: formatAbsoluteDateTime(timestamp),
     warningMessage: isOffline
       ? `ESP32 neposlal nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minúty.`
@@ -64,10 +64,8 @@ function normalizeBackendStatus(status) {
     minutesSinceLastSync: minutes,
     lastSyncAt,
     lastSuccessfulMessageAt,
-    relativeLabel: lastSyncAt
-      ? (minutes < 1 ? 'práve teraz' : `pred ${formatMinutesSk(minutes)}`)
-      : 'zatiaľ bez dát',
-    compactLabel: status.is_no_data ? 'bez dát' : status.is_offline ? 'offline' : 'online',
+    relativeLabel: lastSyncAt ? `pred ${formatMinutesSk(minutes)}` : 'ešte neprišli žiadne dáta',
+    compactLabel: status.is_no_data ? 'Bez dát' : status.is_offline ? 'Offline' : 'Online',
     absoluteLabel: lastSyncAt ? formatAbsoluteDateTime(lastSyncAt) : 'Žiadna správa zo senzora',
     warningMessage: status.warning_message || null
   };
@@ -75,20 +73,29 @@ function normalizeBackendStatus(status) {
 
 export function formatAbsoluteDateTime(timestamp) {
   if (!timestamp) return '—';
-  return new Date(timestamp).toLocaleString('sk', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  const d = new Date(timestamp);
+  const day = d.getDate();
+  const month = d.getMonth() + 1;
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${day}.${month}.${year} - ${hours}:${minutes}`;
 }
 
 export function formatMinutesSk(minutes) {
   if (minutes == null) return 'neznámo';
-  if (minutes < 1) return 'chvíľou';
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 1) return 'menej ako minútou';
+  if (minutes < 60) return `${minutes} ${pluralizeSk(minutes, 'minútou', 'minútami', 'minútami')}`;
+
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} h`;
-  return `${Math.floor(hours / 24)} d`;
+  if (hours < 24) return `${hours} ${pluralizeSk(hours, 'hodinou', 'hodinami', 'hodinami')}`;
+
+  const days = Math.floor(hours / 24);
+  return `${days} ${pluralizeSk(days, 'dňom', 'dňami', 'dňami')}`;
+}
+
+function pluralizeSk(value, one, few, many) {
+  if (value === 1) return one;
+  if (value >= 2 && value <= 4) return few;
+  return many;
 }
