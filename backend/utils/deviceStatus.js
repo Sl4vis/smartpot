@@ -1,4 +1,4 @@
-const OFFLINE_AFTER_MINUTES = Number(process.env.DEVICE_OFFLINE_AFTER_MINUTES || 10);
+const OFFLINE_AFTER_MINUTES = Number(process.env.DEVICE_OFFLINE_AFTER_MINUTES || 2);
 
 function buildDeviceStatus(latestReading) {
   const timestamp = latestReading?.created_at || null;
@@ -37,7 +37,7 @@ function buildDeviceStatus(latestReading) {
     last_sync_at: timestamp,
     last_successful_message_at: timestamp,
     warning_message: isOffline
-      ? `Zariadenie neposlalo nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minút.`
+      ? `Zariadenie neposlalo nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minúty.`
       : null
   };
 }
