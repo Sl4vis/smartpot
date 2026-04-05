@@ -10,7 +10,7 @@ import {
   Droplets,
   Sun,
   Thermometer,
-  Leaf
+  Wind
 } from 'lucide-react';
 import {
   getAlerts,
@@ -33,6 +33,7 @@ import {
   isStandaloneMode,
   isIosDevice
 } from '../services/browserNotifications';
+import { getPlantEmoji } from '../utils/plantEmoji';
 
 const DEMO_ALERTS = [
   {
@@ -72,8 +73,13 @@ const DEMO_ALERTS = [
 
 const icons = {
   low_moisture: Droplets,
+  high_moisture: Droplets,
+  low_temperature: Thermometer,
   high_temperature: Thermometer,
-  low_light: Sun
+  low_light: Sun,
+  high_light: Sun,
+  low_humidity: Wind,
+  high_humidity: Wind
 };
 
 const styles = {
@@ -81,6 +87,16 @@ const styles = {
   critical: { bg: 'bg-red-50', icon: 'text-red-500', border: 'border-red-100' },
   info: { bg: 'bg-blue-50', icon: 'text-blue-500', border: 'border-blue-100' }
 };
+
+const CATEGORY_META = {
+  soil: { label: 'Pôda', icon: Droplets, tint: 'bg-blue-50 text-blue-600 border-blue-100' },
+  light: { label: 'Svetlo', icon: Sun, tint: 'bg-amber-50 text-amber-600 border-amber-100' },
+  temperature: { label: 'Teplota', icon: Thermometer, tint: 'bg-red-50 text-red-600 border-red-100' },
+  air: { label: 'Vzduch', icon: Wind, tint: 'bg-violet-50 text-violet-600 border-violet-100' },
+  other: { label: 'Ostatné', icon: AlertTriangle, tint: 'bg-sage-50 text-sage-600 border-sage-100' }
+};
+
+const CATEGORY_ORDER = ['soil', 'light', 'temperature', 'air', 'other'];
 
 function getPlantGroupKey(alert) {
   return alert.plant?.id || alert.plant_id || alert.device_id || 'unassigned';
@@ -92,14 +108,49 @@ function getPlantTitle(alert) {
   return 'Nepriradené upozornenia';
 }
 
-function getPlantSubtitle(alert) {
-  const pieces = [alert.plant?.species, alert.plant?.location, alert.device_id].filter(Boolean);
-  return pieces.length ? pieces.join(' · ') : 'Bez detailu rastliny';
-}
-
 function sortGroups(a, b) {
   if (b.unreadCount !== a.unreadCount) return b.unreadCount - a.unreadCount;
   return new Date(b.latestAt) - new Date(a.latestAt);
+}
+
+function getAlertCategory(alert) {
+  const type = String(alert?.type || '').toLowerCase();
+  const message = String(alert?.message || '').toLowerCase();
+
+  if (type.includes('moisture') || message.includes('pôd') || message.includes('pod')) return 'soil';
+  if (type.includes('light') || message.includes('svetl') || message.includes('lux')) return 'light';
+  if (type.includes('temperature') || message.includes('teplot')) return 'temperature';
+  if (type.includes('humidity') || message.includes('vlhkosť vzduchu') || message.includes('vlhkost vzduchu') || message.includes('vzduch')) return 'air';
+
+  return 'other';
+}
+
+function groupAlertsByCategory(alerts) {
+  const groups = new Map();
+
+  alerts.forEach((alert) => {
+    const key = getAlertCategory(alert);
+    const current = groups.get(key) || {
+      key,
+      alerts: [],
+      unreadCount: 0,
+      latestAt: alert.created_at
+    };
+
+    current.alerts.push(alert);
+    current.latestAt = new Date(alert.created_at) > new Date(current.latestAt) ? alert.created_at : current.latestAt;
+    if (!alert.read) current.unreadCount += 1;
+
+    groups.set(key, current);
+  });
+
+  return CATEGORY_ORDER
+    .map((key) => groups.get(key))
+    .filter(Boolean)
+    .map((category) => ({
+      ...category,
+      alerts: [...category.alerts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    }));
 }
 
 export default function AlertsPage() {
@@ -112,6 +163,7 @@ export default function AlertsPage() {
   const [pushConfig, setPushConfig] = useState({ push_available: false, vapid_public_key: null, digest_interval_minutes: 60 });
   const [hasPushSubscription, setHasPushSubscription] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
   useEffect(() => {
     (async () => {
@@ -229,7 +281,7 @@ export default function AlertsPage() {
       const current = groups.get(key) || {
         id: key,
         title: getPlantTitle(alert),
-        subtitle: getPlantSubtitle(alert),
+        plant: alert.plant || null,
         alerts: [],
         unreadCount: 0,
         latestAt: alert.created_at
@@ -245,7 +297,8 @@ export default function AlertsPage() {
     return Array.from(groups.values())
       .map(group => ({
         ...group,
-        alerts: [...group.alerts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        alerts: [...group.alerts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+        categories: groupAlertsByCategory(group.alerts)
       }))
       .sort(sortGroups);
   }, [alerts]);
@@ -267,12 +320,42 @@ export default function AlertsPage() {
 
       return next;
     });
+
+    setCollapsedCategories(prev => {
+      const next = { ...prev };
+      const validKeys = new Set(
+        groupedAlerts.flatMap(group => group.categories.map(category => `${group.id}:${category.key}`))
+      );
+
+      Object.keys(next).forEach((key) => {
+        if (!validKeys.has(key)) delete next[key];
+      });
+
+      groupedAlerts.forEach((group) => {
+        group.categories.forEach((category, index) => {
+          const categoryKey = `${group.id}:${category.key}`;
+          if (!(categoryKey in next)) {
+            next[categoryKey] = index > 0 && category.unreadCount === 0;
+          }
+        });
+      });
+
+      return next;
+    });
   }, [groupedAlerts]);
 
   function toggleGroup(groupId) {
     setCollapsedGroups(prev => ({
       ...prev,
       [groupId]: !prev[groupId]
+    }));
+  }
+
+  function toggleCategory(groupId, categoryKey) {
+    const key = `${groupId}:${categoryKey}`;
+    setCollapsedCategories(prev => ({
+      ...prev,
+      [key]: !prev[key]
     }));
   }
 
@@ -313,7 +396,7 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-sage-500 px-1">
+      <div className="hidden sm:flex items-center gap-2 text-xs text-sage-500 px-1">
         {notificationsEnabled && hasPushSubscription ? (
           <Bell className="w-3.5 h-3.5 text-green-600" />
         ) : (
@@ -336,81 +419,123 @@ export default function AlertsPage() {
         <div className="space-y-4">
           {groupedAlerts.map((group, index) => {
             const isCollapsed = Boolean(collapsedGroups[group.id]);
+            const emoji = getPlantEmoji(group.plant || { name: group.title });
 
             return (
               <section key={group.id} className={`card p-4 sm:p-5 fade-in delay-${Math.min(index + 1, 4)}`}>
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.id)}
-                  className="w-full text-left flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+                  className="w-full text-left flex items-center justify-between gap-3"
                 >
-                  <div className="min-w-0 flex items-start gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
-                      <Leaf className="w-5 h-5" />
+                  <div className="min-w-0 flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-green-50 flex items-center justify-center flex-shrink-0 text-2xl">
+                      <span role="img" aria-label={group.title}>{emoji}</span>
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="text-base font-semibold text-green-900">{group.title}</h2>
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${group.unreadCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}`}>
+
+                    <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                      <h2 className="text-base font-semibold text-green-900 truncate">{group.title}</h2>
+
+                      {group.unreadCount > 0 ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-[11px] font-semibold whitespace-nowrap">
                           <Bell className="w-3.5 h-3.5" />
-                          {group.unreadCount > 0 ? `${group.unreadCount} nové` : 'Všetko prečítané'}
+                          {group.unreadCount}
                         </span>
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-sage-50 text-sage-500 text-[11px] font-semibold">
-                          {group.alerts.length} {group.alerts.length === 1 ? 'upozornenie' : group.alerts.length < 5 ? 'upozornenia' : 'upozornení'}
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-[11px] font-semibold whitespace-nowrap">
+                          <Bell className="w-3.5 h-3.5" />
+                          Všetko prečítané
                         </span>
-                      </div>
-                      <p className="text-sm text-sage-500 truncate mt-1">{group.subtitle}</p>
-                      <p className="text-xs text-sage-400 mt-1">
-                        Posledné upozornenie: {new Date(group.latestAt).toLocaleString('sk')}
-                      </p>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 text-sage-500 self-start sm:self-center">
-                    <span className="text-xs font-medium">{isCollapsed ? 'Rozbaliť' : 'Zabaliť'}</span>
-                    <span className="w-9 h-9 rounded-xl bg-sage-50 flex items-center justify-center">
-                      {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-                    </span>
-                  </div>
+                  <span className="w-10 h-10 rounded-xl bg-sage-50 text-sage-500 flex items-center justify-center flex-shrink-0">
+                    {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                  </span>
                 </button>
 
                 {!isCollapsed && (
                   <div className="space-y-3 mt-4">
-                    {group.alerts.map((alert) => {
-                      const Icon = icons[alert.type] || AlertTriangle;
-                      const theme = styles[alert.severity] || styles.info;
+                    {group.categories.map((category) => {
+                      const meta = CATEGORY_META[category.key] || CATEGORY_META.other;
+                      const Icon = meta.icon;
+                      const categoryCollapsed = Boolean(collapsedCategories[`${group.id}:${category.key}`]);
 
                       return (
-                        <div
-                          key={alert.id}
-                          className={`rounded-2xl border p-4 flex items-start gap-4 transition-all ${theme.border} ${alert.read ? 'bg-sage-50/60 opacity-70' : 'bg-white shadow-sm'}`}
-                        >
-                          <div className={`p-2.5 rounded-xl ${theme.bg}`}>
-                            <Icon className={`w-4 h-4 ${theme.icon}`} />
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                              {!alert.read && (
-                                <span className="inline-flex px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[11px] font-semibold">
-                                  Nové
-                                </span>
-                              )}
-                              <span className="text-[11px] text-sage-400 font-mono">{alert.device_id}</span>
+                        <div key={category.key} className="rounded-2xl border border-sage-100 overflow-hidden bg-white">
+                          <button
+                            type="button"
+                            onClick={() => toggleCategory(group.id, category.key)}
+                            className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-sage-50/50 transition-colors"
+                          >
+                            <div className="min-w-0 flex items-center gap-3">
+                              <div className={`w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0 ${meta.tint}`}>
+                                <Icon className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-green-900">{meta.label}</span>
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sage-50 text-sage-500 text-[11px] font-semibold whitespace-nowrap">
+                                    {category.alerts.length}
+                                  </span>
+                                  {category.unreadCount > 0 && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px] font-semibold whitespace-nowrap">
+                                      <Bell className="w-3 h-3" />
+                                      {category.unreadCount}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
 
-                            <p className="text-sm text-green-900">{alert.message}</p>
-                            <p className="text-xs text-sage-400 mt-1.5">{new Date(alert.created_at).toLocaleString('sk')}</p>
-                          </div>
+                            <span className="w-9 h-9 rounded-xl bg-sage-50 flex items-center justify-center text-sage-500 flex-shrink-0">
+                              {categoryCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                            </span>
+                          </button>
 
-                          {!alert.read && (
-                            <button
-                              onClick={() => handleMarkRead(alert.id)}
-                              className="p-2 rounded-xl hover:bg-green-50 transition-colors flex-shrink-0"
-                              title="Označiť ako prečítané"
-                            >
-                              <Check className="w-4 h-4 text-sage-400" />
-                            </button>
+                          {!categoryCollapsed && (
+                            <div className="px-3 pb-3 space-y-3">
+                              {category.alerts.map((alert) => {
+                                const AlertIcon = icons[alert.type] || AlertTriangle;
+                                const theme = styles[alert.severity] || styles.info;
+
+                                return (
+                                  <div
+                                    key={alert.id}
+                                    className={`rounded-2xl border p-4 flex items-start gap-4 transition-all ${theme.border} ${alert.read ? 'bg-sage-50/60 opacity-80' : 'bg-white shadow-sm'}`}
+                                  >
+                                    <div className={`p-2.5 rounded-xl ${theme.bg}`}>
+                                      <AlertIcon className={`w-4 h-4 ${theme.icon}`} />
+                                    </div>
+
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                                        {!alert.read && (
+                                          <span className="inline-flex px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[11px] font-semibold">
+                                            Nové
+                                          </span>
+                                        )}
+                                        <span className="text-[11px] text-sage-400 font-mono">{alert.device_id}</span>
+                                      </div>
+
+                                      <p className="text-sm text-green-900">{alert.message}</p>
+                                      <p className="text-xs text-sage-400 mt-1.5">{new Date(alert.created_at).toLocaleString('sk')}</p>
+                                    </div>
+
+                                    {!alert.read && (
+                                      <button
+                                        onClick={() => handleMarkRead(alert.id)}
+                                        className="p-2 rounded-xl hover:bg-green-50 transition-colors flex-shrink-0"
+                                        title="Označiť ako prečítané"
+                                      >
+                                        <Check className="w-4 h-4 text-sage-400" />
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           )}
                         </div>
                       );
