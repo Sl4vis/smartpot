@@ -119,9 +119,11 @@ export default function PlantDetail() {
   const [hours, setHours] = useState(24);
   const [metric, setMetric] = useState('soil_moisture');
   const [loading, setLoading] = useState(true);
+  const [chartLoading, setChartLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
 
+  // Prvé načítanie — len keď sa zmení id
   useEffect(() => {
     let mounted = true;
 
@@ -172,7 +174,34 @@ export default function PlantDetail() {
     return () => {
       mounted = false;
     };
-  }, [id, hours]);
+  }, [id]);
+
+  // Prepnutie časového rozsahu — len refresh grafu, bez reloadu stránky
+  const isFirstRender = React.useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+
+    if (!plant?.device_id || demoMode) return;
+
+    let cancelled = false;
+    setChartLoading(true);
+
+    (async () => {
+      try {
+        const h = await getSensorHistory(plant.device_id, hours);
+        if (!cancelled) setHistory(h || []);
+      } catch {
+        // silent
+      } finally {
+        if (!cancelled) setChartLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [hours]);
 
   useEffect(() => {
     if (!plant?.device_id || demoMode) return undefined;
@@ -334,15 +363,24 @@ export default function PlantDetail() {
         })}
       </div>
 
-      <div className="card p-5">
-        <div className="flex items-center justify-between mb-4 gap-4">
-          <h2 className="font-semibold text-green-900">{activeMetric.label}</h2>
-          <div className="flex gap-1 bg-sage-50 rounded-lg p-1">
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${activeMetric.color}14` }}>
+              <activeMetric.icon className="w-4 h-4" style={{ color: activeMetric.color }} />
+            </div>
+            <h2 className="font-semibold text-green-900">{activeMetric.label}</h2>
+          </div>
+          <div className="flex gap-0.5 bg-sage-50 rounded-xl p-1">
             {[6, 12, 24, 48].map(h => (
               <button
                 key={h}
                 onClick={() => setHours(h)}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${hours === h ? 'bg-white text-green-700 shadow-sm' : 'text-sage-500 hover:text-green-700'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                  hours === h
+                    ? 'bg-white text-green-700 shadow-sm ring-1 ring-sage-100'
+                    : 'text-sage-400 hover:text-sage-600'
+                }`}
               >
                 {h}h
               </button>
@@ -350,71 +388,89 @@ export default function PlantDetail() {
           </div>
         </div>
 
-        {chartData.length === 0 ? (
-          <div className="flex items-center justify-center h-[240px] text-sm text-sage-400">
-            Žiadne dáta pre zvolený interval
-          </div>
-        ) : (
-          <>
-            <ResponsiveContainer width="100%" height={250}>
-              <AreaChart data={chartData} margin={{ top: 8, right: 10, left: 12, bottom: 18 }}>
-                <defs>
-                  <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={activeMetric.color} stopOpacity={0.16} />
-                    <stop offset="100%" stopColor={activeMetric.color} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e6ece1" vertical={true} horizontal={true} />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fontSize: 11, fill: '#9aaa8c' }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={12}
-                  interval={Math.max(0, Math.floor(chartData.length / 6))}
-                  angle={hours >= 48 ? -18 : 0}
-                  dy={hours >= 48 ? 8 : 0}
-                  height={hours >= 48 ? 56 : 38}
-                  padding={{ left: 10, right: 10 }}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: '#7b8a6c' }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={12}
-                  width={48}
-                />
-                <Tooltip
-                  labelFormatter={(_, payload) => {
-                    if (payload?.[0]?.payload?._raw) return formatTooltipLabel(payload[0].payload._raw);
-                    return '';
-                  }}
-                  formatter={(value) => [Math.round(value * 10) / 10, activeMetric.label]}
-                  contentStyle={{
-                    background: '#fff',
-                    border: '1px solid #eaede7',
-                    borderRadius: '12px',
-                    fontSize: '12px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.06)'
-                  }}
-                  labelStyle={{ color: '#566349', fontWeight: 600, marginBottom: 4 }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey={metric}
-                  stroke={activeMetric.color}
-                  fill="url(#grad)"
-                  strokeWidth={2.5}
-                  dot={false}
-                  isAnimationActive={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-            <div className="mt-3 text-right text-xs sm:text-sm text-sage-500">
-              Aktualizované: <span className="font-medium text-sage-600">{formatUpdatedAt(r.created_at)}</span>
+        <div className="relative px-2 sm:px-3 pb-4">
+          {/* Jemný loading overlay pri prepínaní hodín */}
+          {chartLoading && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-[1px] rounded-xl transition-opacity duration-200">
+              <div className="w-5 h-5 border-2 border-green-200 border-t-green-500 rounded-full animate-spin" />
             </div>
-          </>
-        )}
+          )}
+
+          {chartData.length === 0 ? (
+            <div className="flex items-center justify-center h-[260px] text-sm text-sage-400">
+              Žiadne dáta pre zvolený interval
+            </div>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={270}>
+                <AreaChart data={chartData} margin={{ top: 12, right: 12, left: 4, bottom: 8 }}>
+                  <defs>
+                    <linearGradient id={`grad-${metric}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={activeMetric.color} stopOpacity={0.20} />
+                      <stop offset="50%" stopColor={activeMetric.color} stopOpacity={0.08} />
+                      <stop offset="100%" stopColor={activeMetric.color} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="4 4" stroke="#eef1ea" vertical={false} />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fontSize: 11, fill: '#a3af96', fontWeight: 500 }}
+                    tickLine={false}
+                    axisLine={{ stroke: '#eef1ea', strokeWidth: 1 }}
+                    tickMargin={10}
+                    interval={Math.max(0, Math.floor(chartData.length / 6))}
+                    angle={hours >= 48 ? -18 : 0}
+                    dy={hours >= 48 ? 6 : 0}
+                    height={hours >= 48 ? 52 : 36}
+                    padding={{ left: 8, right: 8 }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#889978', fontWeight: 500 }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    width={44}
+                    domain={['auto', 'auto']}
+                  />
+                  <Tooltip
+                    labelFormatter={(_, payload) => {
+                      if (payload?.[0]?.payload?._raw) return formatTooltipLabel(payload[0].payload._raw);
+                      return '';
+                    }}
+                    formatter={(value) => [Math.round(value * 10) / 10 + activeMetric.unit, activeMetric.label]}
+                    contentStyle={{
+                      background: 'rgba(255, 255, 255, 0.96)',
+                      backdropFilter: 'blur(8px)',
+                      border: 'none',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04)',
+                      padding: '10px 14px'
+                    }}
+                    labelStyle={{ color: '#3c4435', fontWeight: 700, marginBottom: 4, fontSize: '11px' }}
+                    itemStyle={{ color: '#566349', padding: 0 }}
+                    cursor={{ stroke: activeMetric.color, strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.5 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey={metric}
+                    stroke={activeMetric.color}
+                    fill={`url(#grad-${metric})`}
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff', fill: activeMetric.color }}
+                    isAnimationActive={true}
+                    animationDuration={500}
+                    animationEasing="ease-out"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+              <div className="mt-2 px-3 text-right text-[11px] sm:text-xs text-sage-400">
+                Aktualizované: <span className="font-medium text-sage-500">{formatUpdatedAt(r.created_at)}</span>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">
