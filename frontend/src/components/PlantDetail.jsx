@@ -970,8 +970,8 @@ export default function PlantDetail() {
   const showDateOnTicks = shouldShowDateOnTicks(chartDomain[0], chartDomain[1]) || xTickHours >= 48;
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3 sm:gap-4">
+    <div className="space-y-4 sm:space-y-5 page-shell">
+      <div className="flex items-start justify-between gap-3 sm:gap-4 section-reveal stagger-1">
         <div className="flex items-start gap-3 min-w-0">
           <Link to="/" className="p-2 -ml-2 rounded-xl hover:bg-green-50 transition-colors">
             <ArrowLeft className="w-5 h-5 text-sage-500" />
@@ -1003,7 +1003,7 @@ export default function PlantDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 section-reveal stagger-2">
         {METRICS.map(m => {
           const val = r[m.key];
           const active = metric === m.key;
@@ -1026,7 +1026,7 @@ export default function PlantDetail() {
         })}
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="card overflow-hidden section-reveal stagger-3">
         <div className="flex items-center justify-between px-5 pt-5 pb-3 gap-4">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${activeMetric.color}14` }}>
@@ -1053,7 +1053,7 @@ export default function PlantDetail() {
 
         <div
           ref={chartContainerRef}
-          className={`relative px-2 sm:px-3 pb-4 ${zoomDomain ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`}
+          className={`relative px-2 sm:px-3 pb-4 chart-appear ${zoomDomain ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`}
           onMouseDown={handleMouseDown}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
@@ -1163,49 +1163,49 @@ export default function PlantDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <button onClick={handleWater} className="btn-secondary w-full justify-center px-3 min-w-0">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 section-reveal stagger-4">
+        <button onClick={handleWater} className="btn-secondary w-full justify-center px-3 min-w-0 py-2.5 sm:py-2.5">
           <Droplet className="w-4 h-4 shrink-0" />
           <span className="truncate sm:hidden">Polievanie</span>
           <span className="truncate hidden sm:inline">Zaznamenať polievanie</span>
         </button>
-        <button onClick={handleAnalyze} disabled={analyzing} className="btn-primary disabled:opacity-50 w-full justify-center px-3 min-w-0">
+        <button onClick={handleAnalyze} disabled={analyzing} className="btn-primary disabled:opacity-50 w-full justify-center px-3 min-w-0 py-2.5 sm:py-2.5">
           {analyzing ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Brain className="w-4 h-4 shrink-0" />}
           <span className="truncate">{analyzing ? 'Analyzujem...' : 'AI Analýza'}</span>
         </button>
       </div>
 
-      <div className="card p-5">
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+      <div className="card p-4 sm:p-5 mobile-compact-card section-reveal stagger-5">
+        <div className="mb-3 flex flex-col gap-2 sm:mb-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h3 className="font-semibold text-green-900 flex items-center gap-2">
+            <h3 className="font-semibold text-green-900 flex items-center gap-2 text-[15px] sm:text-base">
               <Droplets className="w-4 h-4 text-blue-500" /> Smart odporúčanie polievania
             </h3>
-            <p className="text-xs text-sage-400 mt-1 leading-relaxed">
+            <p className="text-[11px] sm:text-xs text-sage-400 mt-0.5 sm:mt-1 leading-relaxed mobile-two-line">
               Odhad je postavený na priebehu vlhkosti, poslednom poliatí a reakcii senzora.
             </p>
           </div>
-          <span className="self-start rounded-lg bg-sage-50 px-2.5 py-1 text-[11px] font-medium text-sage-500">
+          <span className="self-start rounded-lg bg-sage-50 px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-[11px] font-medium text-sage-500">
             Živé insighty
           </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2.5 sm:gap-3 md:grid-cols-3">
           {smartWateringInsights.map((insight) => {
             const tone = INSIGHT_TONE_STYLES[insight.tone] || INSIGHT_TONE_STYLES.slate;
             const Icon = insight.icon;
             return (
-              <div key={insight.key} className={`rounded-2xl border p-4 ${tone.card}`}>
+              <div key={insight.key} className={`rounded-2xl border p-3 sm:p-4 mobile-compact-card ${tone.card}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-sage-500">{insight.label}</p>
-                    <p className="mt-1 text-base sm:text-lg font-semibold text-green-900 leading-tight">{insight.value}</p>
+                    <p className="text-[11px] sm:text-xs font-medium text-sage-500">{insight.label}</p>
+                    <p className="mt-0.5 sm:mt-1 text-[15px] sm:text-lg font-semibold text-green-900 leading-tight">{insight.value}</p>
                   </div>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${tone.iconWrap}`}>
-                    <Icon className={`w-5 h-5 ${tone.icon}`} />
+                  <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 ${tone.iconWrap}`}>
+                    <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${tone.icon}`} />
                   </div>
                 </div>
-                <p className="mt-3 text-xs text-sage-500 leading-relaxed">{insight.description}</p>
+                <p className="mt-2 sm:mt-3 text-[11px] sm:text-xs text-sage-500 leading-relaxed mobile-two-line">{insight.description}</p>
               </div>
             );
           })}
@@ -1213,26 +1213,26 @@ export default function PlantDetail() {
       </div>
 
       {analysis && (
-        <div className="card p-5 fade-in">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+        <div className="card p-4 sm:p-5 fade-in section-reveal stagger-6 mobile-compact-card">
+          <div className="mb-3 sm:mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-start sm:gap-4">
             <div className="flex items-center gap-3 min-w-0">
               <GaugeRing
                 value={analysis.health_score || 0}
-                size={56}
+                size={48}
                 strokeWidth={4}
                 color={(analysis.health_score || 0) >= 70 ? '#22c55e' : (analysis.health_score || 0) >= 40 ? '#eab308' : '#ef4444'}
               >
-                <span className="text-sm font-bold">{analysis.health_score}</span>
+                <span className="text-xs sm:text-sm font-bold">{analysis.health_score}</span>
               </GaugeRing>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold text-green-900 inline-flex items-center gap-2 leading-tight">
+                  <h3 className="font-semibold text-green-900 inline-flex items-center gap-2 leading-tight text-[15px] sm:text-base">
                     <Brain className="w-4 h-4 text-green-500 shrink-0" />
                     <span>AI Analýza</span>
                   </h3>
                   {aiSuccess ? <CheckCircle className="w-4 h-4 text-green-500 shrink-0" /> : <XCircle className="w-4 h-4 text-red-400 shrink-0" />}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-sage-400">
+                <div className="mt-0.5 sm:mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-sage-400">
                   <span className="truncate max-w-full">{aiProvider}</span>
                   {aiSuccess ? (
                     <span className="inline-flex px-1.5 py-0.5 rounded bg-green-50 text-green-600 text-[10px] font-semibold">OK</span>
@@ -1243,24 +1243,24 @@ export default function PlantDetail() {
               </div>
             </div>
             {analysis.watering_needed && (
-              <span className="self-start sm:ml-auto px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-semibold inline-flex items-center gap-1">
+              <span className="self-start sm:ml-auto px-2.5 sm:px-3 py-1 rounded-lg bg-blue-50 text-blue-600 text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1">
                 <Droplet className="w-3 h-3 shrink-0" /> Treba poliať
               </span>
             )}
           </div>
 
-          <p className="text-sm text-sage-600 mb-4 leading-relaxed">{analysis.summary}</p>
+          <p className="text-[13px] sm:text-sm text-sage-600 mb-3 sm:mb-4 leading-relaxed">{analysis.summary}</p>
 
           {analysis.recommendations?.length > 0 && (
             <div className="space-y-2">
               {analysis.recommendations.map((rec, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-sage-50">
+                <div key={i} className="flex items-start gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-xl bg-sage-50">
                   <span className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
                     rec.priority === 'high' ? 'bg-red-400' : rec.priority === 'medium' ? 'bg-amber-400' : 'bg-green-400'
                   }`} />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-green-900">{rec.action}</p>
-                    <p className="text-xs text-sage-500 mt-0.5 leading-relaxed">{rec.reason}</p>
+                    <p className="text-[13px] sm:text-sm font-medium text-green-900">{rec.action}</p>
+                    <p className="text-[11px] sm:text-xs text-sage-500 mt-0.5 leading-relaxed mobile-two-line">{rec.reason}</p>
                   </div>
                 </div>
               ))}
@@ -1270,13 +1270,13 @@ export default function PlantDetail() {
       )}
 
       {waterLog.length > 0 && (
-        <div className="card p-5">
-          <h3 className="font-semibold text-green-900 flex items-center gap-2 mb-3">
+        <div className="card p-4 sm:p-5 section-reveal stagger-6 mobile-compact-card">
+          <h3 className="font-semibold text-green-900 flex items-center gap-2 mb-3 text-[15px] sm:text-base">
             <Clock className="w-4 h-4 text-sage-400" /> História polievania
           </h3>
           <div className="space-y-2">
             {waterLog.slice(0, 5).map((w, i) => (
-              <div key={i} className="flex items-center justify-between text-sm px-3 py-2 rounded-xl bg-sage-50 gap-3">
+              <div key={i} className="flex items-center justify-between text-[13px] sm:text-sm px-3 py-2 rounded-xl bg-sage-50 gap-3">
                 <span className="text-green-900 min-w-0">{new Date(w.created_at).toLocaleString('sk')}</span>
                 <span className="text-sage-400 text-right">{w.amount_ml ? `${w.amount_ml} ml` : ''} {w.notes || ''}</span>
               </div>
