@@ -168,67 +168,6 @@ function generateTicks(start, end, hours) {
   return ticks;
 }
 
-function getVisibleChartData(data, domain) {
-  if (!domain || !Array.isArray(data) || data.length === 0) return data;
-
-  const visible = data.filter(point => point.ts >= domain.x1 && point.ts <= domain.x2);
-  const previousPoint = [...data].reverse().find(point => point.ts < domain.x1);
-  const nextPoint = data.find(point => point.ts > domain.x2);
-
-  const result = [...visible];
-
-  if (result.length > 0) {
-    if (result[0].ts > domain.x1) {
-      result.unshift({ ...result[0], ts: domain.x1 });
-    } else if (result[0].ts === domain.x1) {
-      result[0] = { ...result[0], ts: domain.x1 };
-    }
-
-    const lastIndex = result.length - 1;
-    if (result[lastIndex].ts < domain.x2) {
-      result.push({ ...result[lastIndex], ts: domain.x2 });
-    } else if (result[lastIndex].ts === domain.x2) {
-      result[lastIndex] = { ...result[lastIndex], ts: domain.x2 };
-    }
-
-    return result;
-  }
-
-  if (previousPoint && nextPoint) {
-    return [
-      { ...previousPoint, ts: domain.x1 },
-      { ...previousPoint, ts: domain.x2 }
-    ];
-  }
-
-  if (previousPoint) {
-    return [
-      { ...previousPoint, ts: domain.x1 },
-      { ...previousPoint, ts: domain.x2 }
-    ];
-  }
-
-  if (nextPoint) {
-    return [
-      { ...nextPoint, ts: domain.x1 },
-      { ...nextPoint, ts: domain.x2 }
-    ];
-  }
-
-  return data;
-}
-
-function getVisibleOfflineZones(zones, domain) {
-  if (!domain || !Array.isArray(zones) || zones.length === 0) return zones;
-
-  return zones
-    .map(zone => ({
-      x1: Math.max(zone.x1, domain.x1),
-      x2: Math.min(zone.x2, domain.x2)
-    }))
-    .filter(zone => zone.x2 > zone.x1);
-}
-
 export default function PlantDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -521,15 +460,6 @@ export default function PlantDetail() {
     () => processChartData(history, hours),
     [history, hours]
   );
-  const chartDomain = zoomDomain ? [zoomDomain.x1, zoomDomain.x2] : [ticks[0], ticks[ticks.length - 1]];
-  const visibleChartData = useMemo(
-    () => getVisibleChartData(chartData, zoomDomain),
-    [chartData, zoomDomain]
-  );
-  const visibleOfflineZones = useMemo(
-    () => getVisibleOfflineZones(offlineZones, zoomDomain),
-    [offlineZones, zoomDomain]
-  );
 
   const aiSuccess = analysis?.ai_success === true ||
     (analysis?.summary && !analysis.summary.includes('lokálne') && !analysis.summary.includes('nedostupná'));
@@ -655,7 +585,7 @@ export default function PlantDetail() {
           ) : (
             <>
               <ResponsiveContainer width="100%" height={270}>
-                <AreaChart data={visibleChartData} margin={{ top: 12, right: 12, left: 4, bottom: 8 }}>
+                <AreaChart data={chartData} margin={{ top: 12, right: 12, left: 4, bottom: 8 }}>
                   <defs>
                     <linearGradient id={`grad-${metric}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={activeMetric.color} stopOpacity={0.20} />
@@ -666,14 +596,16 @@ export default function PlantDetail() {
                   <CartesianGrid strokeDasharray="4 4" stroke="#eef1ea" vertical={false} />
 
                   {/* Offline zóny - červenkavý pás */}
-                  {visibleOfflineZones.map((zone, i) => (
+                  {offlineZones.map((zone, i) => (
                     <ReferenceArea
                       key={`offline-${i}`}
                       x1={zone.x1}
                       x2={zone.x2}
                       fill="#fef2f2"
                       fillOpacity={0.7}
-                      strokeOpacity={0}
+                      stroke="#fecaca"
+                      strokeDasharray="4 4"
+                      strokeWidth={1}
                       ifOverflow="hidden"
                     />
                   ))}
@@ -681,7 +613,7 @@ export default function PlantDetail() {
                   <XAxis
                     dataKey="ts"
                     type="number"
-                    domain={chartDomain}
+                    domain={zoomDomain ? [zoomDomain.x1, zoomDomain.x2] : [ticks[0], ticks[ticks.length - 1]]}
                     ticks={zoomDomain
                       ? generateTicks(zoomDomain.x1, zoomDomain.x2, zoomDomain.x2 - zoomDomain.x1 > 12 * 3600000 ? 48 : hours)
                       : ticks
@@ -747,12 +679,13 @@ export default function PlantDetail() {
               {/* Legenda offline zón */}
               <div className="flex items-center justify-between px-3 mt-1">
                 <div className="flex items-center gap-3">
-                  {visibleOfflineZones.length > 0 && (
+                  {offlineZones.length > 0 && (
                     <div className="flex items-center gap-1.5 text-[10px] text-sage-400">
                       <span className="inline-block w-3 h-2 rounded-sm bg-red-50 border border-red-200" />
                       Zariadenie offline
                     </div>
                   )}
+                  <span className="text-[10px] text-sage-300">Koliesko myši = zoom</span>
                 </div>
                 <div className="text-[11px] sm:text-xs text-sage-400">
                   Aktualizované: <span className="font-medium text-sage-500">{formatUpdatedAt(r.created_at)}</span>
