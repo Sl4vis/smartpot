@@ -45,6 +45,10 @@ const DEMO_PLANT = {
 };
 
 const LIVE_REFRESH_MS = 20000;
+const GAP_THRESHOLD_MS = 3 * 60 * 1000;
+const MIN_ZOOM_RANGE_MS = 2 * 60 * 1000;
+const CHART_LEFT_PAD = 52;
+const CHART_RIGHT_PAD = 16;
 
 function demoHistory() {
   const now = Date.now();
@@ -89,7 +93,67 @@ function formatTickTime(ts, hours) {
   return d.toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
 }
 
-const GAP_THRESHOLD_MS = 3 * 60 * 1000; // 3 minúty
+function generateTicks(start, end) {
+  const count = 6;
+  const step = (end - start) / count;
+  const ticks = [];
+  for (let i = 0; i <= count; i++) {
+    ticks.push(Math.round(start + i * step));
+  }
+  return ticks;
+}
+
+function getMetricNullPoint(ts) {
+  return {
+    ts,
+    soil_moisture: null,
+    temperature: null,
+    humidity: null,
+    light_lux: null,
+    offline: false
+  };
+}
+
+function getChartWidth(rect) {
+  return Math.max(1, rect.width - CHART_LEFT_PAD - CHART_RIGHT_PAD);
+}
+
+function getRelativeChartX(clientX, rect) {
+  const chartWidth = getChartWidth(rect);
+  return Math.max(0, Math.min(1, (clientX - rect.left - CHART_LEFT_PAD) / chartWidth));
+}
+
+function getTouchDistance(touchA, touchB) {
+  const dx = touchA.clientX - touchB.clientX;
+  const dy = touchA.clientY - touchB.clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function clampZoomDomain(domain, fullDomain) {
+  let { x1, x2 } = domain;
+
+  if (x2 <= x1) {
+    x2 = x1 + MIN_ZOOM_RANGE_MS;
+  }
+
+  if (x1 < fullDomain.x1) {
+    x2 += fullDomain.x1 - x1;
+    x1 = fullDomain.x1;
+  }
+
+  if (x2 > fullDomain.x2) {
+    x1 -= x2 - fullDomain.x2;
+    x2 = fullDomain.x2;
+  }
+
+  x1 = Math.max(fullDomain.x1, x1);
+  x2 = Math.min(fullDomain.x2, x2);
+
+  return {
+    x1: Math.round(x1),
+    x2: Math.round(x2)
+  };
+}
 
 /**
  * Spracuje surové dáta z histórie:
@@ -102,18 +166,16 @@ function processChartData(rawHistory, hours) {
   const rangeStart = now - hours * 60 * 60 * 1000;
 
   if (!rawHistory || rawHistory.length === 0) {
-    // Celý rozsah je offline
     return {
       chartData: [
         { ts: rangeStart, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true },
-        { ts: now, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true },
+        { ts: now, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true }
       ],
       offlineZones: [{ x1: rangeStart, x2: now }],
-      ticks: generateTicks(rangeStart, now, hours)
+      ticks: generateTicks(rangeStart, now)
     };
   }
 
-  // Zoradiť podľa času
   const sorted = rawHistory
     .map(r => ({ ...r, ts: new Date(r.created_at).getTime() }))
     .sort((a, b) => a.ts - b.ts);
@@ -121,7 +183,6 @@ function processChartData(rawHistory, hours) {
   const chartData = [];
   const offlineZones = [];
 
-  // Ak je medzera od rangeStart po prvý bod
   if (sorted[0].ts - rangeStart > GAP_THRESHOLD_MS) {
     chartData.push({ ts: rangeStart, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
     chartData.push({ ts: sorted[0].ts - 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
@@ -131,11 +192,9 @@ function processChartData(rawHistory, hours) {
   for (let i = 0; i < sorted.length; i++) {
     chartData.push({ ...sorted[i], offline: false });
 
-    // Kontrola medzery medzi aktuálnym a nasledujúcim bodom
     if (i < sorted.length - 1) {
       const gap = sorted[i + 1].ts - sorted[i].ts;
       if (gap > GAP_THRESHOLD_MS) {
-        // Vložiť offline body
         chartData.push({ ts: sorted[i].ts + 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
         chartData.push({ ts: sorted[i + 1].ts - 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
         offlineZones.push({ x1: sorted[i].ts, x2: sorted[i + 1].ts });
@@ -143,7 +202,6 @@ function processChartData(rawHistory, hours) {
     }
   }
 
-  // Ak je medzera od posledného bodu po now
   const lastTs = sorted[sorted.length - 1].ts;
   if (now - lastTs > GAP_THRESHOLD_MS) {
     chartData.push({ ts: lastTs + 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
@@ -154,18 +212,38 @@ function processChartData(rawHistory, hours) {
   return {
     chartData,
     offlineZones,
-    ticks: generateTicks(rangeStart, now, hours)
+    ticks: generateTicks(rangeStart, now)
   };
 }
 
-function generateTicks(start, end, hours) {
-  const count = 6;
-  const step = (end - start) / count;
-  const ticks = [];
-  for (let i = 0; i <= count; i++) {
-    ticks.push(Math.round(start + i * step));
+function getVisibleChartData(data, domain) {
+  if (!domain || !Array.isArray(data) || data.length === 0) return data;
+
+  const visible = data.filter(point => point.ts >= domain.x1 && point.ts <= domain.x2);
+  if (visible.length === 0) return [];
+
+  const result = [...visible];
+
+  if (result[0].ts > domain.x1) {
+    result.unshift(getMetricNullPoint(domain.x1));
   }
-  return ticks;
+
+  if (result[result.length - 1].ts < domain.x2) {
+    result.push(getMetricNullPoint(domain.x2));
+  }
+
+  return result;
+}
+
+function getVisibleOfflineZones(zones, domain) {
+  if (!domain || !Array.isArray(zones) || zones.length === 0) return zones;
+
+  return zones
+    .map(zone => ({
+      x1: Math.max(zone.x1, domain.x1),
+      x2: Math.min(zone.x2, domain.x2)
+    }))
+    .filter(zone => zone.x2 > zone.x1);
 }
 
 export default function PlantDetail() {
@@ -183,39 +261,22 @@ export default function PlantDetail() {
   const [chartLoading, setChartLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
-
-  // Zoom & pan state
-  const [zoomDomain, setZoomDomain] = useState(null); // { x1, x2 } alebo null
+  const [zoomDomain, setZoomDomain] = useState(null);
   const chartContainerRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startDomain: null });
+  const pinchRef = useRef({ active: false, startDistance: 0, startDomain: null });
 
-  // Pri zmene hodín resetni zoom
   const handleHoursChange = useCallback((h) => {
     setHours(h);
     setZoomDomain(null);
   }, []);
 
-  const { chartData, offlineZones, ticks } = useMemo(
-    () => processChartData(history, hours),
-    [history, hours]
-  );
-
-  const visibleDomain = zoomDomain
-    ? zoomDomain
-    : (ticks?.length >= 2 ? { x1: ticks[0], x2: ticks[ticks.length - 1] } : null);
-
-  const visibleChartData = useMemo(() => {
-    if (!visibleDomain) return chartData;
-    return chartData.filter(point => point.ts >= visibleDomain.x1 && point.ts <= visibleDomain.x2);
-  }, [chartData, visibleDomain]);
-
-  // Pomocné: full domain pre aktuálne dáta
   const getFullDomain = useCallback(() => {
-    if (!ticks || ticks.length < 2) return null;
-    return { x1: ticks[0], x2: ticks[ticks.length - 1] };
-  }, [ticks]);
+    const { ticks: t } = processChartData(history, hours);
+    if (!t || t.length < 2) return null;
+    return { x1: t[0], x2: t[t.length - 1] };
+  }, [history, hours]);
 
-  // Natívny wheel listener s passive:false — blokuje scroll stránky nad grafom
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container) return;
@@ -232,50 +293,40 @@ export default function PlantDetail() {
       const range = currentX2 - currentX1;
 
       const rect = container.getBoundingClientRect();
-      const chartLeftPad = 52;
-      const chartRightPad = 16;
-      const chartWidth = rect.width - chartLeftPad - chartRightPad;
-      const mouseX = Math.max(0, Math.min(1, (e.clientX - rect.left - chartLeftPad) / chartWidth));
-
+      const mouseRatio = getRelativeChartX(e.clientX, rect);
       const zoomFactor = e.deltaY < 0 ? 0.8 : 1.25;
       const newRange = range * zoomFactor;
-
-      const minRange = 2 * 60 * 1000;
       const maxRange = full.x2 - full.x1;
-      const clampedRange = Math.max(minRange, Math.min(maxRange, newRange));
+      const clampedRange = Math.max(MIN_ZOOM_RANGE_MS, Math.min(maxRange, newRange));
 
       if (clampedRange >= maxRange * 0.99) {
         setZoomDomain(null);
         return;
       }
 
-      const center = currentX1 + mouseX * range;
-      let newX1 = center - mouseX * clampedRange;
-      let newX2 = center + (1 - mouseX) * clampedRange;
+      const center = currentX1 + mouseRatio * range;
+      const nextDomain = clampZoomDomain({
+        x1: center - mouseRatio * clampedRange,
+        x2: center + (1 - mouseRatio) * clampedRange
+      }, full);
 
-      if (newX1 < full.x1) { newX2 += full.x1 - newX1; newX1 = full.x1; }
-      if (newX2 > full.x2) { newX1 -= newX2 - full.x2; newX2 = full.x2; }
-      newX1 = Math.max(full.x1, newX1);
-      newX2 = Math.min(full.x2, newX2);
-
-      setZoomDomain({ x1: Math.round(newX1), x2: Math.round(newX2) });
+      setZoomDomain(nextDomain);
     };
 
     container.addEventListener('wheel', onWheel, { passive: false });
     return () => container.removeEventListener('wheel', onWheel);
   }, [zoomDomain, getFullDomain]);
 
-  // Drag-to-pan handlers
   const handleMouseDown = useCallback((e) => {
-    if (!zoomDomain) return; // len keď je zoomnuté
+    if (!zoomDomain) return;
     e.preventDefault();
     dragRef.current = { active: true, startX: e.clientX, startDomain: { ...zoomDomain } };
     document.body.style.userSelect = 'none';
   }, [zoomDomain]);
 
   const handleMouseMove = useCallback((e) => {
-    const d = dragRef.current;
-    if (!d.active || !d.startDomain) return;
+    const drag = dragRef.current;
+    if (!drag.active || !drag.startDomain || pinchRef.current.active) return;
 
     const container = chartContainerRef.current;
     if (!container) return;
@@ -284,22 +335,15 @@ export default function PlantDetail() {
     if (!full) return;
 
     const rect = container.getBoundingClientRect();
-    const chartLeftPad = 52;
-    const chartRightPad = 16;
-    const chartWidth = rect.width - chartLeftPad - chartRightPad;
-
-    const range = d.startDomain.x2 - d.startDomain.x1;
-    const pxDelta = d.startX - e.clientX;
+    const chartWidth = getChartWidth(rect);
+    const range = drag.startDomain.x2 - drag.startDomain.x1;
+    const pxDelta = drag.startX - e.clientX;
     const tsDelta = (pxDelta / chartWidth) * range;
 
-    let newX1 = d.startDomain.x1 + tsDelta;
-    let newX2 = d.startDomain.x2 + tsDelta;
-
-    // Orezať na full range
-    if (newX1 < full.x1) { newX2 += full.x1 - newX1; newX1 = full.x1; }
-    if (newX2 > full.x2) { newX1 -= newX2 - full.x2; newX2 = full.x2; }
-
-    setZoomDomain({ x1: Math.round(newX1), x2: Math.round(newX2) });
+    setZoomDomain(clampZoomDomain({
+      x1: drag.startDomain.x1 + tsDelta,
+      x2: drag.startDomain.x2 + tsDelta
+    }, full));
   }, [getFullDomain]);
 
   const handleMouseUp = useCallback(() => {
@@ -316,7 +360,99 @@ export default function PlantDetail() {
     };
   }, [handleMouseMove, handleMouseUp]);
 
-  // Prvé načítanie — len keď sa zmení id
+  const handleTouchStart = useCallback((e) => {
+    const full = getFullDomain();
+    const container = chartContainerRef.current;
+    if (!full || !container) return;
+
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const [touchA, touchB] = e.touches;
+      pinchRef.current = {
+        active: true,
+        startDistance: getTouchDistance(touchA, touchB),
+        startDomain: zoomDomain ? { ...zoomDomain } : { ...full }
+      };
+      dragRef.current.active = false;
+      return;
+    }
+
+    if (e.touches.length === 1 && zoomDomain) {
+      e.preventDefault();
+      dragRef.current = {
+        active: true,
+        startX: e.touches[0].clientX,
+        startDomain: { ...zoomDomain }
+      };
+    }
+  }, [zoomDomain, getFullDomain]);
+
+  const handleTouchMove = useCallback((e) => {
+    const container = chartContainerRef.current;
+    const full = getFullDomain();
+    if (!container || !full) return;
+
+    if (pinchRef.current.active && e.touches.length === 2) {
+      e.preventDefault();
+      const [touchA, touchB] = e.touches;
+      const rect = container.getBoundingClientRect();
+      const currentDistance = getTouchDistance(touchA, touchB);
+      const startDistance = Math.max(1, pinchRef.current.startDistance);
+      const startDomain = pinchRef.current.startDomain || full;
+      const startRange = startDomain.x2 - startDomain.x1;
+      const scale = currentDistance / startDistance;
+      const newRange = startRange / Math.max(0.25, scale);
+      const maxRange = full.x2 - full.x1;
+      const clampedRange = Math.max(MIN_ZOOM_RANGE_MS, Math.min(maxRange, newRange));
+
+      if (clampedRange >= maxRange * 0.99) {
+        setZoomDomain(null);
+        return;
+      }
+
+      const centerClientX = (touchA.clientX + touchB.clientX) / 2;
+      const centerRatio = getRelativeChartX(centerClientX, rect);
+      const centerTs = startDomain.x1 + centerRatio * startRange;
+
+      setZoomDomain(clampZoomDomain({
+        x1: centerTs - centerRatio * clampedRange,
+        x2: centerTs + (1 - centerRatio) * clampedRange
+      }, full));
+      return;
+    }
+
+    const drag = dragRef.current;
+    if (drag.active && drag.startDomain && e.touches.length === 1) {
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const chartWidth = getChartWidth(rect);
+      const range = drag.startDomain.x2 - drag.startDomain.x1;
+      const pxDelta = drag.startX - e.touches[0].clientX;
+      const tsDelta = (pxDelta / chartWidth) * range;
+
+      setZoomDomain(clampZoomDomain({
+        x1: drag.startDomain.x1 + tsDelta,
+        x2: drag.startDomain.x2 + tsDelta
+      }, full));
+    }
+  }, [getFullDomain]);
+
+  const handleTouchEnd = useCallback((e) => {
+    if (e.touches.length < 2) {
+      pinchRef.current.active = false;
+    }
+
+    if (e.touches.length === 0) {
+      dragRef.current.active = false;
+    } else if (e.touches.length === 1 && zoomDomain) {
+      dragRef.current = {
+        active: true,
+        startX: e.touches[0].clientX,
+        startDomain: zoomDomain ? { ...zoomDomain } : null
+      };
+    }
+  }, [zoomDomain]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -369,7 +505,6 @@ export default function PlantDetail() {
     };
   }, [id]);
 
-  // Prepnutie časového rozsahu — len refresh grafu, bez reloadu stránky
   const isFirstRender = React.useRef(true);
   useEffect(() => {
     if (isFirstRender.current) {
@@ -469,6 +604,21 @@ export default function PlantDetail() {
   const activeMetric = useMemo(() => METRICS.find(m => m.key === metric), [metric]);
   const deviceStatus = plant?.device_status || getDeviceStatus(latest?.created_at || latest);
 
+  const { chartData, offlineZones, ticks } = useMemo(
+    () => processChartData(history, hours),
+    [history, hours]
+  );
+
+  const chartDomain = zoomDomain ? [zoomDomain.x1, zoomDomain.x2] : [ticks[0], ticks[ticks.length - 1]];
+  const visibleChartData = useMemo(
+    () => getVisibleChartData(chartData, zoomDomain),
+    [chartData, zoomDomain]
+  );
+  const visibleOfflineZones = useMemo(
+    () => getVisibleOfflineZones(offlineZones, zoomDomain),
+    [offlineZones, zoomDomain]
+  );
+
   const aiSuccess = analysis?.ai_success === true ||
     (analysis?.summary && !analysis.summary.includes('lokálne') && !analysis.summary.includes('nedostupná'));
   const aiProvider = analysis?.ai_provider === 'groq' ? 'Groq (Llama 3.3)' :
@@ -487,18 +637,24 @@ export default function PlantDetail() {
   if (!plant) return null;
 
   const r = latest || {};
+  const xTickHours = zoomDomain
+    ? (zoomDomain.x2 - zoomDomain.x1 > 24 * 3600000 ? 48 : 6)
+    : hours;
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-start justify-between gap-3 sm:gap-4">
+        <div className="flex items-start gap-3 min-w-0">
           <Link to="/" className="p-2 -ml-2 rounded-xl hover:bg-green-50 transition-colors">
             <ArrowLeft className="w-5 h-5 text-sage-500" />
           </Link>
           <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-green-900 truncate flex items-center gap-1.5">
-              <span className="text-xl sm:text-2xl select-none">{getPlantEmoji(plant)}</span>
-              {plant.name}
+            <h1 className="text-xl sm:text-2xl font-bold text-green-900 truncate flex items-center gap-2">
+              <span className="text-xl sm:text-2xl select-none shrink-0">{getPlantEmoji(plant)}</span>
+              <span className="truncate">{plant.name}</span>
+              <span className="md:hidden shrink-0">
+                <MobileStatusBadge status={deviceStatus} />
+              </span>
             </h1>
             <p className="text-sm text-sage-500 truncate">{plant.species} · {plant.location}</p>
           </div>
@@ -517,13 +673,6 @@ export default function PlantDetail() {
             <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
-      </div>
-
-      {/* Mobile device status */}
-      <div className="md:hidden flex items-center gap-2 text-xs text-sage-500">
-        <span className="font-mono">{plant.device_id || 'Bez zariadenia'}</span>
-        <span className="text-sage-300">·</span>
-        <MobileStatusBadge status={deviceStatus} />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
@@ -551,13 +700,13 @@ export default function PlantDetail() {
 
       <div className="card overflow-hidden">
         <div className="flex items-center justify-between px-5 pt-5 pb-3 gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${activeMetric.color}14` }}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${activeMetric.color}14` }}>
               <activeMetric.icon className="w-4 h-4" style={{ color: activeMetric.color }} />
             </div>
-            <h2 className="font-semibold text-green-900">{activeMetric.label}</h2>
+            <h2 className="font-semibold text-green-900 truncate">{activeMetric.label}</h2>
           </div>
-          <div className="flex gap-0.5 bg-sage-50 rounded-xl p-1">
+          <div className="flex gap-0.5 bg-sage-50 rounded-xl p-1 shrink-0">
             {[6, 12, 24, 48].map(h => (
               <button
                 key={h}
@@ -578,8 +727,12 @@ export default function PlantDetail() {
           ref={chartContainerRef}
           className={`relative px-2 sm:px-3 pb-4 ${zoomDomain ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`}
           onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          style={{ touchAction: 'none' }}
         >
-          {/* Jemný loading overlay pri prepínaní hodín */}
           {chartLoading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-[1px] rounded-xl transition-opacity duration-200">
               <div className="w-5 h-5 border-2 border-green-200 border-t-green-500 rounded-full animate-spin" />
@@ -603,17 +756,14 @@ export default function PlantDetail() {
                   </defs>
                   <CartesianGrid strokeDasharray="4 4" stroke="#eef1ea" vertical={false} />
 
-                  {/* Offline zóny - červenkavý pás */}
-                  {offlineZones.map((zone, i) => (
+                  {visibleOfflineZones.map((zone, i) => (
                     <ReferenceArea
                       key={`offline-${i}`}
                       x1={zone.x1}
                       x2={zone.x2}
                       fill="#fef2f2"
                       fillOpacity={0.7}
-                      stroke="#fecaca"
-                      strokeDasharray="4 4"
-                      strokeWidth={1}
+                      strokeOpacity={0}
                       ifOverflow="hidden"
                     />
                   ))}
@@ -621,19 +771,9 @@ export default function PlantDetail() {
                   <XAxis
                     dataKey="ts"
                     type="number"
-                    domain={visibleDomain ? [visibleDomain.x1, visibleDomain.x2] : ['auto', 'auto']}
-                    ticks={visibleDomain
-                      ? generateTicks(
-                          visibleDomain.x1,
-                          visibleDomain.x2,
-                          visibleDomain.x2 - visibleDomain.x1 > 12 * 3600000 ? 48 : hours
-                        )
-                      : ticks
-                    }
-                    tickFormatter={(ts) => formatTickTime(ts, zoomDomain
-                      ? (zoomDomain.x2 - zoomDomain.x1 > 24 * 3600000 ? 48 : 6)
-                      : hours
-                    )}
+                    domain={chartDomain}
+                    ticks={zoomDomain ? generateTicks(zoomDomain.x1, zoomDomain.x2) : ticks}
+                    tickFormatter={(ts) => formatTickTime(ts, xTickHours)}
                     tick={{ fontSize: 11, fill: '#a3af96', fontWeight: 500 }}
                     tickLine={false}
                     axisLine={{ stroke: '#eef1ea', strokeWidth: 1 }}
@@ -657,6 +797,7 @@ export default function PlantDetail() {
                     }}
                     formatter={(value, name, props) => {
                       if (props?.payload?.offline) return ['Zariadenie offline', ''];
+                      if (value == null) return ['—', activeMetric.label];
                       return [Math.round(value * 10) / 10 + activeMetric.unit, activeMetric.label];
                     }}
                     contentStyle={{
@@ -681,24 +822,23 @@ export default function PlantDetail() {
                     dot={false}
                     activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff', fill: activeMetric.color }}
                     isAnimationActive={!zoomDomain}
-                    animationDuration={500}
+                    animationDuration={350}
                     animationEasing="ease-out"
                     connectNulls={false}
                   />
                 </AreaChart>
               </ResponsiveContainer>
 
-              {/* Legenda offline zón */}
-              <div className="flex items-center justify-between px-3 mt-1">
-                <div className="flex items-center gap-3">
-                  {offlineZones.length > 0 && (
+              <div className="flex items-center justify-between px-3 mt-1 gap-3">
+                <div className="flex items-center gap-3 min-h-[16px]">
+                  {visibleOfflineZones.length > 0 && (
                     <div className="flex items-center gap-1.5 text-[10px] text-sage-400">
                       <span className="inline-block w-3 h-2 rounded-sm bg-red-50 border border-red-200" />
                       Zariadenie offline
                     </div>
                   )}
                 </div>
-                <div className="text-[11px] sm:text-xs text-sage-400">
+                <div className="text-[11px] sm:text-xs text-sage-400 text-right">
                   Aktualizované: <span className="font-medium text-sage-500">{formatUpdatedAt(r.created_at)}</span>
                 </div>
               </div>
@@ -707,49 +847,56 @@ export default function PlantDetail() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <button onClick={handleWater} className="btn-secondary">
-          <Droplet className="w-4 h-4" /> Zaznamenať polievanie
+      <div className="grid grid-cols-2 gap-3">
+        <button onClick={handleWater} className="btn-secondary w-full justify-center px-3 min-w-0">
+          <Droplet className="w-4 h-4 shrink-0" />
+          <span className="truncate sm:hidden">Polievanie</span>
+          <span className="truncate hidden sm:inline">Zaznamenať polievanie</span>
         </button>
-        <button onClick={handleAnalyze} disabled={analyzing} className="btn-primary disabled:opacity-50">
-          {analyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
-          {analyzing ? 'Analyzujem...' : 'AI Analýza'}
+        <button onClick={handleAnalyze} disabled={analyzing} className="btn-primary disabled:opacity-50 w-full justify-center px-3 min-w-0">
+          {analyzing ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Brain className="w-4 h-4 shrink-0" />}
+          <span className="truncate">{analyzing ? 'Analyzujem...' : 'AI Analýza'}</span>
         </button>
       </div>
 
       {analysis && (
         <div className="card p-5 fade-in">
-          <div className="flex items-center gap-4 mb-4">
-            <GaugeRing
-              value={analysis.health_score || 0}
-              size={56}
-              strokeWidth={4}
-              color={(analysis.health_score || 0) >= 70 ? '#22c55e' : (analysis.health_score || 0) >= 40 ? '#eab308' : '#ef4444'}
-            >
-              <span className="text-sm font-bold">{analysis.health_score}</span>
-            </GaugeRing>
-            <div>
-              <h3 className="font-semibold text-green-900 flex items-center gap-2">
-                <Brain className="w-4 h-4 text-green-500" /> AI Analýza
-                {aiSuccess ? <CheckCircle className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-red-400" />}
-              </h3>
-              <p className="text-xs text-sage-400 flex items-center gap-1">
-                {aiProvider}
-                {aiSuccess ? (
-                  <span className="inline-flex px-1.5 py-0.5 rounded bg-green-50 text-green-600 text-[10px] font-semibold">OK</span>
-                ) : (
-                  <span className="inline-flex px-1.5 py-0.5 rounded bg-red-50 text-red-500 text-[10px] font-semibold">OFFLINE</span>
-                )}
-              </p>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <GaugeRing
+                value={analysis.health_score || 0}
+                size={56}
+                strokeWidth={4}
+                color={(analysis.health_score || 0) >= 70 ? '#22c55e' : (analysis.health_score || 0) >= 40 ? '#eab308' : '#ef4444'}
+              >
+                <span className="text-sm font-bold">{analysis.health_score}</span>
+              </GaugeRing>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold text-green-900 inline-flex items-center gap-2 leading-tight">
+                    <Brain className="w-4 h-4 text-green-500 shrink-0" />
+                    <span>AI Analýza</span>
+                  </h3>
+                  {aiSuccess ? <CheckCircle className="w-4 h-4 text-green-500 shrink-0" /> : <XCircle className="w-4 h-4 text-red-400 shrink-0" />}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-sage-400">
+                  <span className="truncate max-w-full">{aiProvider}</span>
+                  {aiSuccess ? (
+                    <span className="inline-flex px-1.5 py-0.5 rounded bg-green-50 text-green-600 text-[10px] font-semibold">OK</span>
+                  ) : (
+                    <span className="inline-flex px-1.5 py-0.5 rounded bg-red-50 text-red-500 text-[10px] font-semibold">OFFLINE</span>
+                  )}
+                </div>
+              </div>
             </div>
             {analysis.watering_needed && (
-              <span className="ml-auto px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-semibold flex items-center gap-1">
-                <Droplet className="w-3 h-3" /> Treba poliať
+              <span className="self-start sm:ml-auto px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-semibold inline-flex items-center gap-1">
+                <Droplet className="w-3 h-3 shrink-0" /> Treba poliať
               </span>
             )}
           </div>
 
-          <p className="text-sm text-sage-600 mb-4">{analysis.summary}</p>
+          <p className="text-sm text-sage-600 mb-4 leading-relaxed">{analysis.summary}</p>
 
           {analysis.recommendations?.length > 0 && (
             <div className="space-y-2">
@@ -758,9 +905,9 @@ export default function PlantDetail() {
                   <span className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
                     rec.priority === 'high' ? 'bg-red-400' : rec.priority === 'medium' ? 'bg-amber-400' : 'bg-green-400'
                   }`} />
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-green-900">{rec.action}</p>
-                    <p className="text-xs text-sage-500 mt-0.5">{rec.reason}</p>
+                    <p className="text-xs text-sage-500 mt-0.5 leading-relaxed">{rec.reason}</p>
                   </div>
                 </div>
               ))}
@@ -776,9 +923,9 @@ export default function PlantDetail() {
           </h3>
           <div className="space-y-2">
             {waterLog.slice(0, 5).map((w, i) => (
-              <div key={i} className="flex items-center justify-between text-sm px-3 py-2 rounded-xl bg-sage-50">
-                <span className="text-green-900">{new Date(w.created_at).toLocaleString('sk')}</span>
-                <span className="text-sage-400">{w.amount_ml ? `${w.amount_ml} ml` : ''} {w.notes || ''}</span>
+              <div key={i} className="flex items-center justify-between text-sm px-3 py-2 rounded-xl bg-sage-50 gap-3">
+                <span className="text-green-900 min-w-0">{new Date(w.created_at).toLocaleString('sk')}</span>
+                <span className="text-sage-400 text-right">{w.amount_ml ? `${w.amount_ml} ml` : ''} {w.notes || ''}</span>
               </div>
             ))}
           </div>
@@ -820,21 +967,11 @@ function DeviceChip({ deviceId, status }) {
 }
 
 function MobileStatusBadge({ status }) {
-  if (status?.isOnline) {
-    return (
-      <span className="inline-flex items-center gap-1 font-semibold text-green-600">
-        <span className="relative flex h-1.5 w-1.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
-        </span>
-        Online
-      </span>
-    );
-  }
+  const isOnline = status?.isOnline;
   return (
-    <span className="inline-flex items-center gap-1 font-semibold text-red-500">
-      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-400" />
-      Offline
+    <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${isOnline ? 'text-green-600' : 'text-red-500'}`}>
+      <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isOnline ? 'bg-green-500' : 'bg-red-400'}`} />
+      {isOnline ? 'Online' : 'Offline'}
     </span>
   );
 }
