@@ -17,6 +17,7 @@ function buildPlantPayload(body = {}) {
   if ('device_id' in body) payload.device_id = body.device_id?.trim?.() || body.device_id || null;
   if ('location' in body) payload.location = body.location?.trim?.() || null;
   if ('image_url' in body) payload.image_url = body.image_url?.trim?.() || null;
+  if ('emoji' in body) payload.emoji = body.emoji?.trim?.() || null;
 
   if ('min_soil_moisture' in body) payload.min_soil_moisture = normalizeOptionalNumber(body.min_soil_moisture, 30);
   if ('max_soil_moisture' in body) payload.max_soil_moisture = normalizeOptionalNumber(body.max_soil_moisture, 80);

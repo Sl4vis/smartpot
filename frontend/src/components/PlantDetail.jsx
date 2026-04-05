@@ -13,10 +13,7 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
-  PencilLine,
-  WifiOff,
-  Activity,
-  CircleHelp
+  PencilLine
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
@@ -32,6 +29,7 @@ import {
 import GaugeRing from './GaugeRing';
 import PlantEditModal from './PlantEditModal';
 import { getDeviceStatus } from '../utils/deviceStatus';
+import { getPlantEmoji } from '../utils/plantEmoji';
 
 const DEMO_PLANT = {
   id: 'demo-1',
@@ -283,27 +281,37 @@ export default function PlantDetail() {
             <ArrowLeft className="w-5 h-5 text-sage-500" />
           </Link>
           <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-green-900 truncate">{plant.name}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-green-900 truncate flex items-center gap-1.5">
+              <span className="text-xl sm:text-2xl select-none">{getPlantEmoji(plant)}</span>
+              {plant.name}
+            </h1>
             <p className="text-sm text-sage-500 truncate">{plant.species} · {plant.location}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
           <DeviceChip deviceId={plant.device_id} status={deviceStatus} />
-          <button onClick={() => setEditOpen(true)} className="btn-secondary px-3 py-2.5" title="Upraviť rastlinu">
+          <button onClick={() => setEditOpen(true)} className="btn-secondary px-2.5 sm:px-3 py-2 sm:py-2.5" title="Upraviť rastlinu">
             <PencilLine className="w-4 h-4" />
             <span className="hidden sm:inline">Upraviť</span>
           </button>
           <button
             onClick={handleDelete}
-            className="p-2.5 rounded-xl text-sage-400 hover:text-red-500 hover:bg-red-50 transition-all"
+            className="p-2 sm:p-2.5 rounded-xl text-sage-400 hover:text-red-500 hover:bg-red-50 transition-all"
             title="Odstrániť rastlinu"
           >
-            <Trash2 className="w-5 h-5" />
+            <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Mobile device status */}
+      <div className="md:hidden flex items-center gap-2 text-xs text-sage-500">
+        <span className="font-mono">{plant.device_id || 'Bez zariadenia'}</span>
+        <span className="text-sage-300">·</span>
+        <MobileStatusBadge status={deviceStatus} />
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         {METRICS.map(m => {
           const val = r[m.key];
           const active = metric === m.key;
@@ -500,15 +508,62 @@ export default function PlantDetail() {
 }
 
 function DeviceChip({ deviceId, status }) {
-  const statusText = status?.isOnline ? 'text-green-600' : status?.isOffline ? 'text-red-600' : 'text-sage-500';
-  const Icon = status?.isOnline ? Activity : status?.isOffline ? WifiOff : CircleHelp;
+  let dotClass, labelClass, label;
+
+  if (status?.isOnline) {
+    dotClass = 'bg-green-500';
+    labelClass = 'text-green-600';
+    label = 'Online';
+  } else if (status?.isOffline) {
+    dotClass = 'bg-red-400';
+    labelClass = 'text-red-500';
+    label = 'Offline';
+  } else {
+    dotClass = 'bg-sage-300';
+    labelClass = 'text-sage-500';
+    label = 'Bez dát';
+  }
 
   return (
     <div className="hidden md:flex items-center gap-2 rounded-2xl border border-sage-100 bg-white px-3 py-2 min-w-0">
       <span className="truncate text-xs text-sage-500">{deviceId || 'Bez zariadenia'}</span>
-      <span className={`inline-flex items-center gap-1 text-sm font-semibold ${statusText}`}>
-        <Icon className="w-3.5 h-3.5" /> {status?.label || 'Bez dát'}
+      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${labelClass}`}>
+        <span className="relative flex h-2 w-2">
+          {status?.isOnline && (
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+          )}
+          <span className={`relative inline-flex rounded-full h-2 w-2 ${dotClass}`} />
+        </span>
+        {label}
       </span>
     </div>
+  );
+}
+
+function MobileStatusBadge({ status }) {
+  if (status?.isOnline) {
+    return (
+      <span className="inline-flex items-center gap-1 font-semibold text-green-600">
+        <span className="relative flex h-1.5 w-1.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
+        </span>
+        Online
+      </span>
+    );
+  }
+  if (status?.isOffline) {
+    return (
+      <span className="inline-flex items-center gap-1 font-semibold text-red-500">
+        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-400" />
+        Offline
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 font-semibold text-sage-400">
+      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-sage-300" />
+      Bez dát
+    </span>
   );
 }

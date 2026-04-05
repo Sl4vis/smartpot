@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS plants (
   device_id VARCHAR(100) NOT NULL UNIQUE,
   location VARCHAR(255),
   image_url TEXT,
+  emoji VARCHAR(10),
   min_soil_moisture FLOAT DEFAULT 30,
   max_soil_moisture FLOAT DEFAULT 80,
   min_temperature FLOAT DEFAULT 15,
@@ -132,3 +133,6 @@ CREATE POLICY "Service role full access" ON push_subscriptions FOR ALL USING (tr
 CREATE TRIGGER push_subscriptions_updated_at
   BEFORE UPDATE ON push_subscriptions
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Pridanie emoji stĺpca (pre existujúce inštalácie)
+ALTER TABLE plants ADD COLUMN IF NOT EXISTS emoji VARCHAR(10);

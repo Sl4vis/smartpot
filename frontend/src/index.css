@@ -13,7 +13,10 @@ body {
   background: linear-gradient(160deg, #f0fdf4 0%, #fafcfa 50%, #f0fdf4 100%);
   color: #1a2e1a;
   min-height: 100vh;
+  min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 ::-webkit-scrollbar { width: 4px; }

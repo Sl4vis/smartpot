@@ -15,7 +15,7 @@ export default function AddPlant() {
   const [devicesLoading, setDevicesLoading] = useState(true);
 
   const [form, setForm] = useState({
-    name: '', species: '', device_id: '', location: '',
+    name: '', species: '', device_id: '', location: '', emoji: '',
     min_soil_moisture: 30, max_soil_moisture: 80,
     min_temperature: 15, max_temperature: 30, min_light: 200
   });
@@ -57,7 +57,8 @@ export default function AddPlant() {
         max_soil_moisture: result.max_soil_moisture ?? f.max_soil_moisture,
         min_temperature: result.min_temperature ?? f.min_temperature,
         max_temperature: result.max_temperature ?? f.max_temperature,
-        min_light: result.min_light ?? f.min_light
+        min_light: result.min_light ?? f.min_light,
+        emoji: result.emoji ?? f.emoji
       }));
       if (result.description) setAiDescription(result.description);
     } catch {
@@ -106,7 +107,7 @@ export default function AddPlant() {
         </div>
 
         {/* Druh + Umiestnenie */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-green-900 mb-1.5">Druh *</label>
             <input name="species" value={form.species} onChange={set} placeholder="Monstera deliciosa" className="input-field" />
@@ -209,7 +210,10 @@ export default function AddPlant() {
         {aiDescription && (
           <div className="px-3 py-2.5 rounded-xl bg-purple-50 text-xs text-purple-700 leading-relaxed flex items-start gap-2">
             <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-            <span>{aiDescription}</span>
+            <span>
+              {form.emoji && <span className="text-base mr-1">{form.emoji}</span>}
+              {aiDescription}
+            </span>
           </div>
         )}
 

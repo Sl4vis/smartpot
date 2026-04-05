@@ -8,6 +8,7 @@ function getInitialForm(plant) {
     species: plant?.species || '',
     device_id: plant?.device_id || '',
     location: plant?.location || '',
+    emoji: plant?.emoji || '',
     min_soil_moisture: plant?.min_soil_moisture ?? 30,
     max_soil_moisture: plant?.max_soil_moisture ?? 80,
     min_temperature: plant?.min_temperature ?? 15,
@@ -95,7 +96,8 @@ export default function PlantEditModal({ isOpen, onClose, plant, onSaved }) {
         min_temperature: result.min_temperature ?? prev.min_temperature,
         max_temperature: result.max_temperature ?? prev.max_temperature,
         min_light: result.min_light ?? prev.min_light,
-        max_light: result.max_light ?? prev.max_light
+        max_light: result.max_light ?? prev.max_light,
+        emoji: result.emoji ?? prev.emoji
       }));
       if (result.description) setAiDescription(result.description);
     } catch {
@@ -135,8 +137,8 @@ export default function PlantEditModal({ isOpen, onClose, plant, onSaved }) {
   if (!isOpen || !plant) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-sage-900/30 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="card w-full max-w-2xl max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-sage-900/30 backdrop-blur-sm sm:p-4" onClick={onClose}>
+      <div className="card w-full sm:max-w-2xl max-h-[85vh] max-h-[85dvh] sm:max-h-[90vh] overflow-hidden rounded-b-none sm:rounded-b-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-sage-100 bg-white">
           <div>
             <h2 className="text-xl font-bold text-green-900">Upraviť rastlinu</h2>
@@ -152,7 +154,7 @@ export default function PlantEditModal({ isOpen, onClose, plant, onSaved }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="overflow-y-auto max-h-[calc(90vh-88px)]">
+        <form onSubmit={handleSubmit} className="overflow-y-auto max-h-[calc(85vh-88px)] sm:max-h-[calc(90vh-88px)]">
           <div className="p-6 space-y-5">
             {error && (
               <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600">{error}</div>

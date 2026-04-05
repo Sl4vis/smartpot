@@ -59,6 +59,7 @@ async function suggestThresholds(species) {
   const prompt = `Si expert botanik. Pre izbovú rastlinu druhu "${species}" navrhni optimálne prahové hodnoty pre IoT senzory.
 
 Vyhľadaj informácie o tomto druhu rastliny a na základe toho urči ideálne podmienky.
+Taktiež vyber jedno vhodné emoji, ktoré najlepšie reprezentuje túto rastlinu (napr. 🌵 pre kaktus, 🌸 pre orchideu, 🪴 pre monstera, 🌿 pre papraď, 🌹 pre ružu, 🌻 pre slnečnicu, 🌴 pre palmu, 🌺 pre ibištek atď.).
 
 Odpovedz VÝHRADNE platným JSON:
 {
@@ -67,6 +68,7 @@ Odpovedz VÝHRADNE platným JSON:
   "min_temperature": <minimálna teplota v °C>,
   "max_temperature": <maximálna teplota v °C>,
   "min_light": <minimálne svetlo v lux>,
+  "emoji": "<jedno emoji representujúce túto rastlinu>",
   "description": "<1-2 vety o nákoch tejto rastliny v slovenčine>"
 }`;
 
