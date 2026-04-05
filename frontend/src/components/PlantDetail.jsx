@@ -63,7 +63,7 @@ function demoHistory() {
 
 const METRICS = [
   { key: 'soil_moisture', label: 'Vlhkosť pôdy', icon: Droplets, color: '#3b82f6', unit: '%' },
-  { key: 'temperature', label: 'Teplota', icon: Thermometer, color: '#ef4444', unit: '°C' },
+  { key: 'temperature', label: 'Teplota', icon: Thermometer, color: '#f97316', unit: '°C' },
   { key: 'humidity', label: 'Vlhkosť vzduchu', icon: Wind, color: '#8b5cf6', unit: '%' },
   { key: 'light_lux', label: 'Svetlo', icon: Sun, color: '#f59e0b', unit: ' lux' }
 ];
@@ -169,13 +169,24 @@ function clampZoomDomain(domain, fullDomain) {
  * Dôležité: offline úseky už nepridávame ako nulové body do série.
  * Reálna čiara tak nekreslí zvislé artefakty na hranách zoomu.
  */
+function createOfflinePoint(ts) {
+  return {
+    ts,
+    soil_moisture: 0,
+    temperature: 0,
+    humidity: 0,
+    light_lux: 0,
+    offline: true
+  };
+}
+
 function processChartData(rawHistory, hours) {
   const now = Date.now();
   const rangeStart = now - hours * 60 * 60 * 1000;
 
   if (!rawHistory || rawHistory.length === 0) {
     return {
-      chartData: [],
+      chartData: [createOfflinePoint(rangeStart), createOfflinePoint(now)],
       offlineZones: [{ x1: rangeStart, x2: now }],
       ticks: generateTicks(rangeStart, now)
     };
@@ -185,26 +196,41 @@ function processChartData(rawHistory, hours) {
     .map(r => ({ ...r, ts: new Date(r.created_at).getTime(), offline: false }))
     .sort((a, b) => a.ts - b.ts);
 
+  const chartData = [];
   const offlineZones = [];
 
   if (sorted[0].ts - rangeStart > GAP_THRESHOLD_MS) {
+    chartData.push(createOfflinePoint(rangeStart));
+    chartData.push(createOfflinePoint(Math.max(rangeStart, sorted[0].ts - 1)));
     offlineZones.push({ x1: rangeStart, x2: sorted[0].ts });
   }
 
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const gap = sorted[i + 1].ts - sorted[i].ts;
-    if (gap > GAP_THRESHOLD_MS) {
-      offlineZones.push({ x1: sorted[i].ts, x2: sorted[i + 1].ts });
+  for (let i = 0; i < sorted.length; i++) {
+    chartData.push(sorted[i]);
+
+    if (i < sorted.length - 1) {
+      const next = sorted[i + 1];
+      const gap = next.ts - sorted[i].ts;
+
+      if (gap > GAP_THRESHOLD_MS) {
+        chartData.push(createOfflinePoint(sorted[i].ts + 1));
+        chartData.push(createOfflinePoint(next.ts - 1));
+        offlineZones.push({ x1: sorted[i].ts, x2: next.ts });
+      }
     }
   }
 
   const lastTs = sorted[sorted.length - 1].ts;
   if (now - lastTs > GAP_THRESHOLD_MS) {
+    chartData.push(createOfflinePoint(lastTs + 1));
+    chartData.push(createOfflinePoint(now));
     offlineZones.push({ x1: lastTs, x2: now });
   }
 
+  chartData.sort((a, b) => a.ts - b.ts);
+
   return {
-    chartData: sorted,
+    chartData,
     offlineZones,
     ticks: generateTicks(rangeStart, now)
   };
@@ -228,6 +254,7 @@ function getVisibleOfflineZones(zones, domain) {
 
 function getMetricValues(data, metric) {
   return (Array.isArray(data) ? data : [])
+    .filter(point => !point?.offline)
     .map(point => point?.[metric])
     .filter(value => typeof value === 'number' && Number.isFinite(value));
 }
@@ -271,7 +298,7 @@ function CustomMetricTooltip({ active, payload, label, metricConfig }) {
   if (!active || !payload || payload.length === 0) return null;
 
   const point = payload.find(item => item?.value != null && Number.isFinite(item.value));
-  if (!point) return null;
+  if (!point || point?.payload?.offline) return null;
 
   return (
     <div
@@ -292,6 +319,28 @@ function CustomMetricTooltip({ active, payload, label, metricConfig }) {
         {Math.round(point.value * 10) / 10}{metricConfig.unit}
       </div>
     </div>
+  );
+}
+
+function CustomTooltipCursor({ points, payload, viewBox, color }) {
+  const isOffline = Array.isArray(payload) && payload.some(item => item?.payload?.offline);
+  if (isOffline || !points || !points[0]) return null;
+
+  const x = points[0].x;
+  const y1 = viewBox?.y ?? 0;
+  const y2 = y1 + (viewBox?.height ?? 0);
+
+  return (
+    <line
+      x1={x}
+      x2={x}
+      y1={y1}
+      y2={y2}
+      stroke={color}
+      strokeWidth={1}
+      strokeDasharray="4 4"
+      strokeOpacity={0.5}
+    />
   );
 }
 
@@ -799,7 +848,7 @@ export default function PlantDetail() {
           ) : (
             <>
               <ResponsiveContainer width="100%" height={270}>
-                <AreaChart data={visibleChartData} margin={{ top: 12, right: 12, left: 4, bottom: 8 }}>
+                <AreaChart data={visibleChartData} margin={{ top: 12, right: 0, left: 0, bottom: 8 }}>
                   <defs>
                     <linearGradient id={`grad-${metric}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={activeMetric.color} stopOpacity={0.20} />
@@ -832,7 +881,7 @@ export default function PlantDetail() {
                     axisLine={{ stroke: '#eef1ea', strokeWidth: 1 }}
                     tickMargin={10}
                     height={hours >= 48 && !zoomDomain ? 48 : 36}
-                    padding={{ left: 4, right: 4 }}
+                    padding={{ left: 0, right: 0 }}
                     allowDataOverflow={true}
                   />
                   <YAxis
@@ -845,12 +894,12 @@ export default function PlantDetail() {
                     ticks={generateNumericTicks(yAxisDomain[0], yAxisDomain[1])}
                     tickFormatter={(value) => Number.isInteger(value) ? value : value.toFixed(1)}
                     domain={yAxisDomain}
-                    allowDataOverflow={false}
+                    allowDataOverflow={true}
                   />
                   <Tooltip
                     content={<CustomMetricTooltip metricConfig={activeMetric} />}
                     filterNull={true}
-                    cursor={{ stroke: activeMetric.color, strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.5 }}
+                    cursor={<CustomTooltipCursor color={activeMetric.color} />}
                   />
                   <Area
                     type="monotone"
@@ -860,7 +909,7 @@ export default function PlantDetail() {
                     fillOpacity={1}
                     strokeWidth={2.5}
                     dot={false}
-                    activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff', fill: activeMetric.color }}
+                    activeDot={(props) => (props?.payload?.offline ? null : <circle cx={props.cx} cy={props.cy} r={5} strokeWidth={2} stroke="#fff" fill={activeMetric.color} />)}
                     isAnimationActive={!zoomDomain}
                     animationDuration={350}
                     animationEasing="ease-out"
