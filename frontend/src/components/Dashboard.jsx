@@ -132,19 +132,27 @@ function PlantCard({ data, i }) {
 
   return (
     <Link to={`/plant/${plant.id}`} className={`card p-4 sm:p-5 block fade-in delay-${i + 1} group`}>
-      <div className="flex items-start justify-between mb-3 sm:mb-4">
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+      <div className="flex items-start justify-between mb-3 sm:mb-4 gap-3">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
           <div className="relative flex-shrink-0">
             <GaugeRing value={score} size={48} strokeWidth={4} color={scoreColor}>
               <span className="text-xs font-bold">{score}</span>
             </GaugeRing>
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="text-base sm:text-lg leading-none select-none" role="img" aria-label={plant.species || plant.name}>{emoji}</span>
-              <h3 className="font-semibold text-green-900 truncate text-sm sm:text-base">{plant.name}</h3>
+          <div className="flex items-stretch gap-2.5 min-w-0">
+            <div className="flex items-center flex-shrink-0 self-stretch -mt-0.5">
+              <span
+                className="text-3xl sm:text-4xl leading-none select-none"
+                role="img"
+                aria-label={plant.species || plant.name}
+              >
+                {emoji}
+              </span>
             </div>
-            <p className="text-xs text-sage-500 truncate mt-0.5">{plant.species}</p>
+            <div className="min-w-0 flex justify-center flex-col">
+              <h3 className="font-semibold text-green-900 truncate text-base sm:text-lg leading-tight">{plant.name}</h3>
+              <p className="text-xs sm:text-sm text-sage-500 truncate mt-1 leading-tight">{plant.species}</p>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -174,8 +182,7 @@ function PlantCard({ data, i }) {
 
       <div className="mt-3 sm:mt-4 pt-3 border-t border-sage-100 flex items-center justify-between text-xs gap-3">
         <span className="truncate text-sage-400">{plant.location}</span>
-        <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
-          <span className="truncate text-sage-400 text-[11px] sm:text-xs">{plant.device_id || 'Bez zariadenia'}</span>
+        <div className="flex items-center gap-2 flex-shrink-0 min-w-0 justify-end">
           <StatusBadge status={status} />
         </div>
       </div>
