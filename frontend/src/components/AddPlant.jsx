@@ -84,7 +84,7 @@ export default function AddPlant() {
   const hasAny = hasAvailable || devices.assigned?.length > 0;
 
   return (
-    <div className="max-w-lg mx-auto space-y-5">
+    <div className="max-w-lg mx-auto space-y-5 page-shell">
       <div className="flex items-center gap-3">
         <Link to="/" className="p-2 -ml-2 rounded-xl hover:bg-green-50 transition-colors">
           <ArrowLeft className="w-5 h-5 text-sage-500" />
