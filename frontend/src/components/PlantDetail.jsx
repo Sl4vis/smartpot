@@ -15,7 +15,7 @@ import {
   Trash2,
   PencilLine
 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import {
   getPlant,
   getSensorHistory,
@@ -64,23 +64,9 @@ const METRICS = [
   { key: 'light_lux', label: 'Svetlo', icon: Sun, color: '#f59e0b', unit: ' lux' }
 ];
 
-function formatTime(isoString, hours) {
-  const d = new Date(isoString);
-  if (hours >= 48) {
-    return d.toLocaleDateString('sk', { day: 'numeric', month: 'numeric' }) + ' ' +
-      d.toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
-  }
-  if (hours >= 24) {
-    const isToday = new Date().toDateString() === d.toDateString();
-    const prefix = isToday ? '' : d.toLocaleDateString('sk', { day: 'numeric', month: 'numeric' }) + ' ';
-    return prefix + d.toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
-  }
-  return d.toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatTooltipLabel(isoString) {
-  if (!isoString) return '';
-  const d = new Date(isoString);
+function formatTooltipLabel(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
   return d.toLocaleDateString('sk', { day: 'numeric', month: 'numeric', year: 'numeric' }) + ' ' +
     d.toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
 }
@@ -94,17 +80,92 @@ function formatUpdatedAt(isoString) {
   })}`;
 }
 
-function thinData(data, maxPoints = 60) {
-  if (data.length <= maxPoints) return data;
-  const step = Math.ceil(data.length / maxPoints);
-  const result = [];
-  for (let i = 0; i < data.length; i += step) {
-    result.push(data[i]);
+function formatTickTime(ts, hours) {
+  const d = new Date(ts);
+  if (hours >= 48) {
+    return d.toLocaleDateString('sk', { day: 'numeric', month: 'numeric' }) + '\n' +
+      d.toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
   }
-  if (result[result.length - 1] !== data[data.length - 1]) {
-    result.push(data[data.length - 1]);
+  return d.toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
+}
+
+const GAP_THRESHOLD_MS = 3 * 60 * 1000; // 3 minúty
+
+/**
+ * Spracuje surové dáta z histórie:
+ * - Pokryje celý časový rozsah (now - hours → now)
+ * - Nájde medzery (offline) a zapíše ich ako zóny
+ * - Vráti { chartData, offlineZones, ticks }
+ */
+function processChartData(rawHistory, hours) {
+  const now = Date.now();
+  const rangeStart = now - hours * 60 * 60 * 1000;
+
+  if (!rawHistory || rawHistory.length === 0) {
+    // Celý rozsah je offline
+    return {
+      chartData: [
+        { ts: rangeStart, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true },
+        { ts: now, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true },
+      ],
+      offlineZones: [{ x1: rangeStart, x2: now }],
+      ticks: generateTicks(rangeStart, now, hours)
+    };
   }
-  return result;
+
+  // Zoradiť podľa času
+  const sorted = rawHistory
+    .map(r => ({ ...r, ts: new Date(r.created_at).getTime() }))
+    .sort((a, b) => a.ts - b.ts);
+
+  const chartData = [];
+  const offlineZones = [];
+
+  // Ak je medzera od rangeStart po prvý bod
+  if (sorted[0].ts - rangeStart > GAP_THRESHOLD_MS) {
+    chartData.push({ ts: rangeStart, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
+    chartData.push({ ts: sorted[0].ts - 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
+    offlineZones.push({ x1: rangeStart, x2: sorted[0].ts });
+  }
+
+  for (let i = 0; i < sorted.length; i++) {
+    chartData.push({ ...sorted[i], offline: false });
+
+    // Kontrola medzery medzi aktuálnym a nasledujúcim bodom
+    if (i < sorted.length - 1) {
+      const gap = sorted[i + 1].ts - sorted[i].ts;
+      if (gap > GAP_THRESHOLD_MS) {
+        // Vložiť offline body
+        chartData.push({ ts: sorted[i].ts + 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
+        chartData.push({ ts: sorted[i + 1].ts - 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
+        offlineZones.push({ x1: sorted[i].ts, x2: sorted[i + 1].ts });
+      }
+    }
+  }
+
+  // Ak je medzera od posledného bodu po now
+  const lastTs = sorted[sorted.length - 1].ts;
+  if (now - lastTs > GAP_THRESHOLD_MS) {
+    chartData.push({ ts: lastTs + 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
+    chartData.push({ ts: now, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
+    offlineZones.push({ x1: lastTs, x2: now });
+  }
+
+  return {
+    chartData,
+    offlineZones,
+    ticks: generateTicks(rangeStart, now, hours)
+  };
+}
+
+function generateTicks(start, end, hours) {
+  const count = 6;
+  const step = (end - start) / count;
+  const ticks = [];
+  for (let i = 0; i <= count; i++) {
+    ticks.push(Math.round(start + i * step));
+  }
+  return ticks;
 }
 
 export default function PlantDetail() {
@@ -276,12 +337,10 @@ export default function PlantDetail() {
   const activeMetric = useMemo(() => METRICS.find(m => m.key === metric), [metric]);
   const deviceStatus = plant?.device_status || getDeviceStatus(latest?.created_at || latest);
 
-  const thinned = thinData(history);
-  const chartData = thinned.map(h => ({
-    ...h,
-    time: formatTime(h.created_at, hours),
-    _raw: h.created_at
-  }));
+  const { chartData, offlineZones, ticks } = useMemo(
+    () => processChartData(history, hours),
+    [history, hours]
+  );
 
   const aiSuccess = analysis?.ai_success === true ||
     (analysis?.summary && !analysis.summary.includes('lokálne') && !analysis.summary.includes('nedostupná'));
@@ -412,17 +471,33 @@ export default function PlantDetail() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="4 4" stroke="#eef1ea" vertical={false} />
+
+                  {/* Offline zóny - červenkavý pás */}
+                  {offlineZones.map((zone, i) => (
+                    <ReferenceArea
+                      key={`offline-${i}`}
+                      x1={zone.x1}
+                      x2={zone.x2}
+                      fill="#fef2f2"
+                      fillOpacity={0.7}
+                      stroke="#fecaca"
+                      strokeDasharray="4 4"
+                      strokeWidth={1}
+                    />
+                  ))}
+
                   <XAxis
-                    dataKey="time"
+                    dataKey="ts"
+                    type="number"
+                    domain={[ticks[0], ticks[ticks.length - 1]]}
+                    ticks={ticks}
+                    tickFormatter={(ts) => formatTickTime(ts, hours)}
                     tick={{ fontSize: 11, fill: '#a3af96', fontWeight: 500 }}
                     tickLine={false}
                     axisLine={{ stroke: '#eef1ea', strokeWidth: 1 }}
                     tickMargin={10}
-                    interval={Math.max(0, Math.floor(chartData.length / 6))}
-                    angle={hours >= 48 ? -18 : 0}
-                    dy={hours >= 48 ? 6 : 0}
-                    height={hours >= 48 ? 52 : 36}
-                    padding={{ left: 8, right: 8 }}
+                    height={hours >= 48 ? 48 : 36}
+                    padding={{ left: 4, right: 4 }}
                   />
                   <YAxis
                     tick={{ fontSize: 11, fill: '#889978', fontWeight: 500 }}
@@ -433,11 +508,14 @@ export default function PlantDetail() {
                     domain={['auto', 'auto']}
                   />
                   <Tooltip
-                    labelFormatter={(_, payload) => {
-                      if (payload?.[0]?.payload?._raw) return formatTooltipLabel(payload[0].payload._raw);
-                      return '';
+                    labelFormatter={(ts) => {
+                      if (!ts) return '';
+                      return formatTooltipLabel(ts);
                     }}
-                    formatter={(value) => [Math.round(value * 10) / 10 + activeMetric.unit, activeMetric.label]}
+                    formatter={(value, name, props) => {
+                      if (props?.payload?.offline) return ['Zariadenie offline', ''];
+                      return [Math.round(value * 10) / 10 + activeMetric.unit, activeMetric.label];
+                    }}
                     contentStyle={{
                       background: 'rgba(255, 255, 255, 0.96)',
                       backdropFilter: 'blur(8px)',
@@ -462,9 +540,19 @@ export default function PlantDetail() {
                     isAnimationActive={true}
                     animationDuration={500}
                     animationEasing="ease-out"
+                    connectNulls={false}
                   />
                 </AreaChart>
               </ResponsiveContainer>
+
+              {/* Legenda offline zón */}
+              {offlineZones.length > 0 && (
+                <div className="flex items-center gap-1.5 px-3 mt-1 text-[10px] text-sage-400">
+                  <span className="inline-block w-3 h-2 rounded-sm bg-red-50 border border-red-200" />
+                  Zariadenie offline
+                </div>
+              )}
+
               <div className="mt-2 px-3 text-right text-[11px] sm:text-xs text-sage-400">
                 Aktualizované: <span className="font-medium text-sage-500">{formatUpdatedAt(r.created_at)}</span>
               </div>
