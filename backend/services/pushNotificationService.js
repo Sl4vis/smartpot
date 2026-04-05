@@ -1,7 +1,11 @@
 const webpush = require('web-push');
 const { supabase } = require('../models/supabase');
 const { buildDeviceStatus } = require('../utils/deviceStatus');
-const { buildPushPayload, buildTestPushPayload } = require('../utils/notificationDigest');
+const {
+  buildPushPayload,
+  buildTestPushPayload,
+  buildDeviceStatusChangePayload
+} = require('../utils/notificationDigest');
 
 const DIGEST_INTERVAL_MINUTES = Number(process.env.PUSH_DIGEST_INTERVAL_MINUTES || 60);
 const SCHEDULER_INTERVAL_MINUTES = Number(process.env.PUSH_SCHEDULER_INTERVAL_MINUTES || 10);
@@ -142,12 +146,139 @@ function isSubscriptionDue(record) {
   return elapsedMinutes >= DIGEST_INTERVAL_MINUTES;
 }
 
+async function sendToSubscriptionRecords(records, payload, { updateDigestTimestamp = false } = {}) {
+  if (!isPushConfigured() || !payload || !records?.length) return 0;
+
+  const now = new Date().toISOString();
+  let sentCount = 0;
+
+  for (const record of records) {
+    try {
+      await sendPushToSubscription(record.subscription_json, payload);
+      sentCount += 1;
+
+      const update = {
+        last_successful_send_at: now,
+        last_error: null,
+        updated_at: now
+      };
+
+      if (updateDigestTimestamp) {
+        update.last_sent_at = now;
+      }
+
+      await supabase
+        .from('push_subscriptions')
+        .update(update)
+        .eq('endpoint', record.endpoint);
+    } catch (error) {
+      const statusCode = error?.statusCode || error?.status || null;
+      const update = {
+        last_error: error?.body || error?.message || 'Unknown push error',
+        updated_at: now
+      };
+
+      if (statusCode === 404 || statusCode === 410) {
+        update.enabled = false;
+      }
+
+      await supabase
+        .from('push_subscriptions')
+        .update(update)
+        .eq('endpoint', record.endpoint);
+    }
+  }
+
+  return sentCount;
+}
+
+async function sendImmediatePushNotification(payload) {
+  if (!isPushConfigured() || !payload) return 0;
+
+  const { data: subscriptions, error } = await supabase
+    .from('push_subscriptions')
+    .select('*')
+    .eq('enabled', true);
+
+  if (error) throw error;
+  return sendToSubscriptionRecords(subscriptions || [], payload, { updateDigestTimestamp: false });
+}
+
+async function createDeviceStatusAlert({ plant, type, message, severity }) {
+  const { data, error } = await supabase
+    .from('alerts')
+    .insert({
+      device_id: plant.device_id,
+      plant_id: plant.id,
+      type,
+      message,
+      severity
+    })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function checkAndNotifyOfflineTransitions(overview) {
+  const offlineEntries = (overview || []).filter(
+    (item) => item?.plant?.id && item?.plant?.device_id && item?.latest_reading && item?.device_status?.is_offline
+  );
+
+  if (offlineEntries.length === 0) return;
+
+  const plantIds = offlineEntries.map(item => item.plant.id);
+  const { data: offlineAlerts, error } = await supabase
+    .from('alerts')
+    .select('plant_id, created_at')
+    .in('plant_id', plantIds)
+    .eq('type', 'device_offline')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  const latestAlertByPlant = new Map();
+  for (const alert of offlineAlerts || []) {
+    if (!latestAlertByPlant.has(alert.plant_id)) {
+      latestAlertByPlant.set(alert.plant_id, alert);
+    }
+  }
+
+  for (const entry of offlineEntries) {
+    const latestReadingAt = new Date(entry.latest_reading.created_at).getTime();
+    const latestOfflineAlert = latestAlertByPlant.get(entry.plant.id);
+    const latestOfflineAlertAt = latestOfflineAlert ? new Date(latestOfflineAlert.created_at).getTime() : 0;
+
+    if (latestOfflineAlertAt > latestReadingAt) {
+      continue;
+    }
+
+    const minutes = entry.device_status.minutes_since_last_sync;
+    await createDeviceStatusAlert({
+      plant: entry.plant,
+      type: 'device_offline',
+      message: `Zariadenie ${entry.plant.device_id} je offline ${formatRelativeMinutes(minutes)}.`,
+      severity: 'warning'
+    });
+
+    await sendImmediatePushNotification(buildDeviceStatusChangePayload({
+      deviceId: entry.plant.device_id,
+      plantName: entry.plant.name,
+      status: 'offline'
+    }));
+  }
+}
+
 async function sendScheduledPushDigests() {
   if (!isPushConfigured() || digestRunning) return;
 
   digestRunning = true;
 
   try {
+    const overview = await getOverviewForPush();
+    await checkAndNotifyOfflineTransitions(overview);
+
     const { data: subscriptions, error } = await supabase
       .from('push_subscriptions')
       .select('*')
@@ -158,42 +289,10 @@ async function sendScheduledPushDigests() {
     const dueSubscriptions = (subscriptions || []).filter(isSubscriptionDue);
     if (dueSubscriptions.length === 0) return;
 
-    const overview = await getOverviewForPush();
     const payload = buildPushPayload(overview);
     if (!payload) return;
 
-    const now = new Date().toISOString();
-
-    for (const record of dueSubscriptions) {
-      try {
-        await sendPushToSubscription(record.subscription_json, payload);
-
-        await supabase
-          .from('push_subscriptions')
-          .update({
-            last_sent_at: now,
-            last_successful_send_at: now,
-            last_error: null,
-            updated_at: now
-          })
-          .eq('endpoint', record.endpoint);
-      } catch (error) {
-        const statusCode = error?.statusCode || error?.status || null;
-        const update = {
-          last_error: error?.body || error?.message || 'Unknown push error',
-          updated_at: now
-        };
-
-        if (statusCode === 404 || statusCode === 410) {
-          update.enabled = false;
-        }
-
-        await supabase
-          .from('push_subscriptions')
-          .update(update)
-          .eq('endpoint', record.endpoint);
-      }
-    }
+    await sendToSubscriptionRecords(dueSubscriptions, payload, { updateDigestTimestamp: true });
   } catch (error) {
     console.error('❌ Push digest scheduler chyba:', error.message);
   } finally {
@@ -225,6 +324,15 @@ function startPushScheduler() {
   }, SCHEDULER_INTERVAL_MINUTES * 60 * 1000);
 }
 
+function formatRelativeMinutes(minutes) {
+  if (minutes == null) return 'neznámo dlho';
+  if (minutes < 1) return 'práve teraz';
+  if (minutes < 60) return `pred ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `pred ${hours} h`;
+  return `pred ${Math.floor(hours / 24)} d`;
+}
+
 module.exports = {
   DIGEST_INTERVAL_MINUTES,
   getPushConfig,
@@ -233,5 +341,6 @@ module.exports = {
   disablePushSubscription,
   sendTestPush,
   sendScheduledPushDigests,
+  sendImmediatePushNotification,
   startPushScheduler
 };
