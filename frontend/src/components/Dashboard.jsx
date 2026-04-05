@@ -91,7 +91,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-5 sm:space-y-6 page-shell">
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-green-900">Moje rastliny</h1>
