@@ -196,23 +196,12 @@ function StatusBadge({ status }) {
     );
   }
 
-  if (status?.isOffline) {
-    return (
-      <span className="inline-flex items-center gap-1 font-semibold text-red-500 whitespace-nowrap">
-        <span className="relative flex h-2 w-2">
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400" />
-        </span>
-        Offline
-      </span>
-    );
-  }
-
   return (
-    <span className="inline-flex items-center gap-1 font-semibold text-sage-400 whitespace-nowrap">
+    <span className="inline-flex items-center gap-1 font-semibold text-red-500 whitespace-nowrap">
       <span className="relative flex h-2 w-2">
-        <span className="relative inline-flex rounded-full h-2 w-2 bg-sage-300" />
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400" />
       </span>
-      Bez dát
+      Offline
     </span>
   );
 }

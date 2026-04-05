@@ -1,23 +1,24 @@
-export const OFFLINE_AFTER_MINUTES = 2;
+export const OFFLINE_AFTER_MINUTES = 3;
 
 export function getDeviceStatus(readingOrTimestamp) {
   const timestamp = typeof readingOrTimestamp === 'string'
     ? readingOrTimestamp
     : readingOrTimestamp?.created_at || null;
 
+  // Ak nie sú žiadne dáta → Offline
   if (!timestamp) {
     return {
-      status: 'no_data',
-      label: 'Bez dát',
+      status: 'offline',
+      label: 'Offline',
       isOnline: false,
-      isOffline: false,
-      isNoData: true,
+      isOffline: true,
+      isNoData: false,
       stale: true,
       minutesSinceLastSync: null,
       lastSyncAt: null,
       lastSuccessfulMessageAt: null,
-      relativeLabel: 'ešte neprišli žiadne dáta',
-      compactLabel: 'bez dát',
+      relativeLabel: 'žiadne dáta',
+      compactLabel: 'offline',
       absoluteLabel: 'Žiadna správa zo senzora',
       warningMessage: 'ESP32 ešte neposlal žiadne meranie.'
     };
@@ -40,7 +41,7 @@ export function getDeviceStatus(readingOrTimestamp) {
     compactLabel: isOffline ? `offline · ${formatMinutesCompact(minutes)}` : `pred ${formatMinutesCompact(minutes)}`,
     absoluteLabel: formatAbsoluteDateTime(timestamp),
     warningMessage: isOffline
-      ? `ESP32 neposlal nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minút.`
+      ? `ESP32 neposlal nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minúty.`
       : null
   };
 }

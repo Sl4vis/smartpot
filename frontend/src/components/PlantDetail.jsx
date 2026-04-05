@@ -508,28 +508,17 @@ export default function PlantDetail() {
 }
 
 function DeviceChip({ deviceId, status }) {
-  let dotClass, labelClass, label;
-
-  if (status?.isOnline) {
-    dotClass = 'bg-green-500';
-    labelClass = 'text-green-600';
-    label = 'Online';
-  } else if (status?.isOffline) {
-    dotClass = 'bg-red-400';
-    labelClass = 'text-red-500';
-    label = 'Offline';
-  } else {
-    dotClass = 'bg-sage-300';
-    labelClass = 'text-sage-500';
-    label = 'Bez dát';
-  }
+  const isOnline = status?.isOnline;
+  const dotClass = isOnline ? 'bg-green-500' : 'bg-red-400';
+  const labelClass = isOnline ? 'text-green-600' : 'text-red-500';
+  const label = isOnline ? 'Online' : 'Offline';
 
   return (
     <div className="hidden md:flex items-center gap-2 rounded-2xl border border-sage-100 bg-white px-3 py-2 min-w-0">
       <span className="truncate text-xs text-sage-500">{deviceId || 'Bez zariadenia'}</span>
       <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${labelClass}`}>
         <span className="relative flex h-2 w-2">
-          {status?.isOnline && (
+          {isOnline && (
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
           )}
           <span className={`relative inline-flex rounded-full h-2 w-2 ${dotClass}`} />
@@ -552,18 +541,10 @@ function MobileStatusBadge({ status }) {
       </span>
     );
   }
-  if (status?.isOffline) {
-    return (
-      <span className="inline-flex items-center gap-1 font-semibold text-red-500">
-        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-400" />
-        Offline
-      </span>
-    );
-  }
   return (
-    <span className="inline-flex items-center gap-1 font-semibold text-sage-400">
-      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-sage-300" />
-      Bez dát
+    <span className="inline-flex items-center gap-1 font-semibold text-red-500">
+      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-400" />
+      Offline
     </span>
   );
 }

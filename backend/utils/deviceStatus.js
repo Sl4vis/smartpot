@@ -1,16 +1,17 @@
-const OFFLINE_AFTER_MINUTES = Number(process.env.DEVICE_OFFLINE_AFTER_MINUTES || 2);
+const OFFLINE_AFTER_MINUTES = Number(process.env.DEVICE_OFFLINE_AFTER_MINUTES || 3);
 
 function buildDeviceStatus(latestReading) {
   const timestamp = latestReading?.created_at || null;
 
+  // Ak nie sú žiadne dáta → Offline
   if (!timestamp) {
     return {
-      status: 'no_data',
-      label: 'Bez dát',
+      status: 'offline',
+      label: 'Offline',
       offline_after_minutes: OFFLINE_AFTER_MINUTES,
       is_online: false,
-      is_offline: false,
-      is_no_data: true,
+      is_offline: true,
+      is_no_data: false,
       is_stale: true,
       minutes_since_last_sync: null,
       last_sync_at: null,
@@ -37,7 +38,7 @@ function buildDeviceStatus(latestReading) {
     last_sync_at: timestamp,
     last_successful_message_at: timestamp,
     warning_message: isOffline
-      ? `Zariadenie neposlalo nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minút.`
+      ? `Zariadenie neposlalo nové dáta viac ako ${OFFLINE_AFTER_MINUTES} minúty.`
       : null
   };
 }
