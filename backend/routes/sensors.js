@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../models/supabase');
-const { buildDeviceStatus } = require('../utils/deviceStatus');
+const { buildDeviceStatus, OFFLINE_AFTER_MINUTES } = require('../utils/deviceStatus');
+const { buildDeviceStatusChangePayload } = require('../utils/notificationDigest');
+const { sendImmediatePushNotification } = require('../services/pushNotificationService');
 
 const ALERT_COOLDOWN_MINUTES = Number(process.env.ALERT_COOLDOWN_MINUTES || 60);
 
@@ -83,6 +85,7 @@ router.post('/', async (req, res) => {
 
     if (error) throw error;
     await checkThresholds(device_id, reading);
+    await maybeNotifyDeviceOnline(device_id, reading);
     res.status(201).json({ success: true, data });
   } catch (err) {
     console.error('Sensor POST error:', err.message);
@@ -211,6 +214,49 @@ async function checkThresholds(deviceId, reading) {
     if (alerts.length > 0) await supabase.from('alerts').insert(alerts);
   } catch (err) {
     console.error('Threshold check error:', err.message);
+  }
+}
+
+async function maybeNotifyDeviceOnline(deviceId, reading) {
+  try {
+    const { data: plant, error: plantError } = await supabase
+      .from('plants')
+      .select('id, name, device_id')
+      .eq('device_id', deviceId)
+      .single();
+
+    if (plantError || !plant) return;
+
+    const { data: recentReadings, error: readingsError } = await supabase
+      .from('sensor_readings')
+      .select('created_at')
+      .eq('device_id', deviceId)
+      .order('created_at', { ascending: false })
+      .limit(2);
+
+    if (readingsError) throw readingsError;
+
+    const previousReading = recentReadings?.[1] || null;
+    if (!previousReading?.created_at) return;
+
+    const gapMs = new Date(reading.created_at).getTime() - new Date(previousReading.created_at).getTime();
+    if (gapMs < OFFLINE_AFTER_MINUTES * 60 * 1000) return;
+
+    await supabase.from('alerts').insert({
+      device_id: deviceId,
+      plant_id: plant.id,
+      type: 'device_online',
+      message: `Zariadenie ${deviceId} je online a znovu posiela dáta.`,
+      severity: 'info'
+    });
+
+    await sendImmediatePushNotification(buildDeviceStatusChangePayload({
+      deviceId,
+      plantName: plant.name,
+      status: 'online'
+    }));
+  } catch (err) {
+    console.error('Device online notification error:', err.message);
   }
 }
 
