@@ -68,6 +68,13 @@ const METRICS = [
   { key: 'light_lux', label: 'Svetlo', icon: Sun, color: '#f59e0b', unit: ' lux' }
 ];
 
+const METRIC_DEFAULT_DOMAINS = {
+  soil_moisture: [0, 100],
+  temperature: [0, 40],
+  humidity: [0, 100],
+  light_lux: [0, 2000]
+};
+
 function formatTooltipLabel(ts) {
   if (!ts) return '';
   const d = new Date(ts);
@@ -103,16 +110,14 @@ function generateTicks(start, end) {
   return ticks;
 }
 
-function getMetricNullPoint(ts) {
-  return {
-    ts,
-    soil_moisture: null,
-    temperature: null,
-    humidity: null,
-    light_lux: null,
-    offline: false
-  };
+function generateNumericTicks(start, end, count = 5) {
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
+  if (start === end) return [start];
+
+  const step = (end - start) / count;
+  return Array.from({ length: count + 1 }, (_, i) => Math.round((start + step * i) * 10) / 10);
 }
+
 
 function getChartWidth(rect) {
   return Math.max(1, rect.width - CHART_LEFT_PAD - CHART_RIGHT_PAD);
@@ -160,6 +165,9 @@ function clampZoomDomain(domain, fullDomain) {
  * - Pokryje celý časový rozsah (now - hours → now)
  * - Nájde medzery (offline) a zapíše ich ako zóny
  * - Vráti { chartData, offlineZones, ticks }
+ *
+ * Dôležité: offline úseky už nepridávame ako nulové body do série.
+ * Reálna čiara tak nekreslí zvislé artefakty na hranách zoomu.
  */
 function processChartData(rawHistory, hours) {
   const now = Date.now();
@@ -167,50 +175,36 @@ function processChartData(rawHistory, hours) {
 
   if (!rawHistory || rawHistory.length === 0) {
     return {
-      chartData: [
-        { ts: rangeStart, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true },
-        { ts: now, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true }
-      ],
+      chartData: [],
       offlineZones: [{ x1: rangeStart, x2: now }],
       ticks: generateTicks(rangeStart, now)
     };
   }
 
   const sorted = rawHistory
-    .map(r => ({ ...r, ts: new Date(r.created_at).getTime() }))
+    .map(r => ({ ...r, ts: new Date(r.created_at).getTime(), offline: false }))
     .sort((a, b) => a.ts - b.ts);
 
-  const chartData = [];
   const offlineZones = [];
 
   if (sorted[0].ts - rangeStart > GAP_THRESHOLD_MS) {
-    chartData.push({ ts: rangeStart, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
-    chartData.push({ ts: sorted[0].ts - 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
     offlineZones.push({ x1: rangeStart, x2: sorted[0].ts });
   }
 
-  for (let i = 0; i < sorted.length; i++) {
-    chartData.push({ ...sorted[i], offline: false });
-
-    if (i < sorted.length - 1) {
-      const gap = sorted[i + 1].ts - sorted[i].ts;
-      if (gap > GAP_THRESHOLD_MS) {
-        chartData.push({ ts: sorted[i].ts + 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
-        chartData.push({ ts: sorted[i + 1].ts - 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
-        offlineZones.push({ x1: sorted[i].ts, x2: sorted[i + 1].ts });
-      }
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const gap = sorted[i + 1].ts - sorted[i].ts;
+    if (gap > GAP_THRESHOLD_MS) {
+      offlineZones.push({ x1: sorted[i].ts, x2: sorted[i + 1].ts });
     }
   }
 
   const lastTs = sorted[sorted.length - 1].ts;
   if (now - lastTs > GAP_THRESHOLD_MS) {
-    chartData.push({ ts: lastTs + 1000, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
-    chartData.push({ ts: now, soil_moisture: 0, temperature: 0, humidity: 0, light_lux: 0, offline: true });
     offlineZones.push({ x1: lastTs, x2: now });
   }
 
   return {
-    chartData,
+    chartData: sorted,
     offlineZones,
     ticks: generateTicks(rangeStart, now)
   };
@@ -218,21 +212,7 @@ function processChartData(rawHistory, hours) {
 
 function getVisibleChartData(data, domain) {
   if (!domain || !Array.isArray(data) || data.length === 0) return data;
-
-  const visible = data.filter(point => point.ts >= domain.x1 && point.ts <= domain.x2);
-  if (visible.length === 0) return [];
-
-  const result = [...visible];
-
-  if (result[0].ts > domain.x1) {
-    result.unshift(getMetricNullPoint(domain.x1));
-  }
-
-  if (result[result.length - 1].ts < domain.x2) {
-    result.push(getMetricNullPoint(domain.x2));
-  }
-
-  return result;
+  return data.filter(point => point.ts >= domain.x1 && point.ts <= domain.x2);
 }
 
 function getVisibleOfflineZones(zones, domain) {
@@ -244,6 +224,75 @@ function getVisibleOfflineZones(zones, domain) {
       x2: Math.min(zone.x2, domain.x2)
     }))
     .filter(zone => zone.x2 > zone.x1);
+}
+
+function getMetricValues(data, metric) {
+  return (Array.isArray(data) ? data : [])
+    .map(point => point?.[metric])
+    .filter(value => typeof value === 'number' && Number.isFinite(value));
+}
+
+function getYAxisDomain(visibleData, fallbackData, metric) {
+  const visibleValues = getMetricValues(visibleData, metric);
+  const fallbackValues = getMetricValues(fallbackData, metric);
+  const values = visibleValues.length > 0 ? visibleValues : fallbackValues;
+
+  if (values.length === 0) {
+    return METRIC_DEFAULT_DOMAINS[metric] || [0, 100];
+  }
+
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+
+  if (min === max) {
+    const pad = Math.max(1, Math.abs(min) * 0.1);
+    min -= pad;
+    max += pad;
+  } else {
+    const pad = (max - min) * 0.15;
+    min -= pad;
+    max += pad;
+  }
+
+  if (metric === 'soil_moisture' || metric === 'humidity' || metric === 'light_lux') {
+    min = Math.max(0, min);
+  }
+
+  const defaultDomain = METRIC_DEFAULT_DOMAINS[metric];
+  if (defaultDomain) {
+    min = Math.max(defaultDomain[0], min);
+    max = Math.min(defaultDomain[1], Math.max(max, min + 1));
+  }
+
+  return [Math.floor(min * 10) / 10, Math.ceil(max * 10) / 10];
+}
+
+function CustomMetricTooltip({ active, payload, label, metricConfig }) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  const point = payload.find(item => item?.value != null && Number.isFinite(item.value));
+  if (!point) return null;
+
+  return (
+    <div
+      style={{
+        background: 'rgba(255, 255, 255, 0.96)',
+        backdropFilter: 'blur(8px)',
+        border: 'none',
+        borderRadius: '12px',
+        fontSize: '12px',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04)',
+        padding: '10px 14px'
+      }}
+    >
+      <div style={{ color: '#3c4435', fontWeight: 700, marginBottom: 4, fontSize: '11px' }}>
+        {formatTooltipLabel(label)}
+      </div>
+      <div style={{ color: '#566349' }}>
+        {Math.round(point.value * 10) / 10}{metricConfig.unit}
+      </div>
+    </div>
+  );
 }
 
 export default function PlantDetail() {
@@ -618,6 +667,10 @@ export default function PlantDetail() {
     () => getVisibleOfflineZones(offlineZones, zoomDomain),
     [offlineZones, zoomDomain]
   );
+  const yAxisDomain = useMemo(
+    () => getYAxisDomain(visibleChartData, chartData, metric),
+    [visibleChartData, chartData, metric]
+  );
 
   const aiSuccess = analysis?.ai_success === true ||
     (analysis?.summary && !analysis.summary.includes('lokálne') && !analysis.summary.includes('nedostupná'));
@@ -739,7 +792,7 @@ export default function PlantDetail() {
             </div>
           )}
 
-          {chartData.length === 0 ? (
+          {chartData.length === 0 && offlineZones.length === 0 ? (
             <div className="flex items-center justify-center h-[260px] text-sm text-sage-400">
               Žiadne dáta pre zvolený interval
             </div>
@@ -783,34 +836,20 @@ export default function PlantDetail() {
                     allowDataOverflow={true}
                   />
                   <YAxis
+                    type="number"
                     tick={{ fontSize: 11, fill: '#889978', fontWeight: 500 }}
                     tickLine={false}
-                    axisLine={false}
+                    axisLine={{ stroke: '#e5ece1', strokeWidth: 1 }}
                     tickMargin={8}
-                    width={44}
-                    domain={['auto', 'auto']}
+                    width={46}
+                    ticks={generateNumericTicks(yAxisDomain[0], yAxisDomain[1])}
+                    tickFormatter={(value) => Number.isInteger(value) ? value : value.toFixed(1)}
+                    domain={yAxisDomain}
+                    allowDataOverflow={false}
                   />
                   <Tooltip
-                    labelFormatter={(ts) => {
-                      if (!ts) return '';
-                      return formatTooltipLabel(ts);
-                    }}
-                    formatter={(value, name, props) => {
-                      if (props?.payload?.offline) return ['Zariadenie offline', ''];
-                      if (value == null) return ['—', activeMetric.label];
-                      return [Math.round(value * 10) / 10 + activeMetric.unit, activeMetric.label];
-                    }}
-                    contentStyle={{
-                      background: 'rgba(255, 255, 255, 0.96)',
-                      backdropFilter: 'blur(8px)',
-                      border: 'none',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04)',
-                      padding: '10px 14px'
-                    }}
-                    labelStyle={{ color: '#3c4435', fontWeight: 700, marginBottom: 4, fontSize: '11px' }}
-                    itemStyle={{ color: '#566349', padding: 0 }}
+                    content={<CustomMetricTooltip metricConfig={activeMetric} />}
+                    filterNull={true}
                     cursor={{ stroke: activeMetric.color, strokeWidth: 1, strokeDasharray: '4 4', strokeOpacity: 0.5 }}
                   />
                   <Area
@@ -818,6 +857,7 @@ export default function PlantDetail() {
                     dataKey={metric}
                     stroke={activeMetric.color}
                     fill={`url(#grad-${metric})`}
+                    fillOpacity={1}
                     strokeWidth={2.5}
                     dot={false}
                     activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff', fill: activeMetric.color }}
@@ -825,6 +865,7 @@ export default function PlantDetail() {
                     animationDuration={350}
                     animationEasing="ease-out"
                     connectNulls={false}
+                    baseValue={yAxisDomain[0]}
                   />
                 </AreaChart>
               </ResponsiveContainer>
