@@ -195,12 +195,25 @@ export default function PlantDetail() {
     setZoomDomain(null);
   }, []);
 
+  const { chartData, offlineZones, ticks } = useMemo(
+    () => processChartData(history, hours),
+    [history, hours]
+  );
+
+  const visibleDomain = zoomDomain
+    ? zoomDomain
+    : (ticks?.length >= 2 ? { x1: ticks[0], x2: ticks[ticks.length - 1] } : null);
+
+  const visibleChartData = useMemo(() => {
+    if (!visibleDomain) return chartData;
+    return chartData.filter(point => point.ts >= visibleDomain.x1 && point.ts <= visibleDomain.x2);
+  }, [chartData, visibleDomain]);
+
   // Pomocné: full domain pre aktuálne dáta
   const getFullDomain = useCallback(() => {
-    const { ticks: t } = processChartData(history, hours);
-    if (!t || t.length < 2) return null;
-    return { x1: t[0], x2: t[t.length - 1] };
-  }, [history, hours]);
+    if (!ticks || ticks.length < 2) return null;
+    return { x1: ticks[0], x2: ticks[ticks.length - 1] };
+  }, [ticks]);
 
   // Natívny wheel listener s passive:false — blokuje scroll stránky nad grafom
   useEffect(() => {
@@ -456,11 +469,6 @@ export default function PlantDetail() {
   const activeMetric = useMemo(() => METRICS.find(m => m.key === metric), [metric]);
   const deviceStatus = plant?.device_status || getDeviceStatus(latest?.created_at || latest);
 
-  const { chartData, offlineZones, ticks } = useMemo(
-    () => processChartData(history, hours),
-    [history, hours]
-  );
-
   const aiSuccess = analysis?.ai_success === true ||
     (analysis?.summary && !analysis.summary.includes('lokálne') && !analysis.summary.includes('nedostupná'));
   const aiProvider = analysis?.ai_provider === 'groq' ? 'Groq (Llama 3.3)' :
@@ -585,7 +593,7 @@ export default function PlantDetail() {
           ) : (
             <>
               <ResponsiveContainer width="100%" height={270}>
-                <AreaChart data={chartData} margin={{ top: 12, right: 12, left: 4, bottom: 8 }}>
+                <AreaChart data={visibleChartData} margin={{ top: 12, right: 12, left: 4, bottom: 8 }}>
                   <defs>
                     <linearGradient id={`grad-${metric}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={activeMetric.color} stopOpacity={0.20} />
@@ -613,9 +621,13 @@ export default function PlantDetail() {
                   <XAxis
                     dataKey="ts"
                     type="number"
-                    domain={zoomDomain ? [zoomDomain.x1, zoomDomain.x2] : [ticks[0], ticks[ticks.length - 1]]}
-                    ticks={zoomDomain
-                      ? generateTicks(zoomDomain.x1, zoomDomain.x2, zoomDomain.x2 - zoomDomain.x1 > 12 * 3600000 ? 48 : hours)
+                    domain={visibleDomain ? [visibleDomain.x1, visibleDomain.x2] : ['auto', 'auto']}
+                    ticks={visibleDomain
+                      ? generateTicks(
+                          visibleDomain.x1,
+                          visibleDomain.x2,
+                          visibleDomain.x2 - visibleDomain.x1 > 12 * 3600000 ? 48 : hours
+                        )
                       : ticks
                     }
                     tickFormatter={(ts) => formatTickTime(ts, zoomDomain
@@ -668,7 +680,7 @@ export default function PlantDetail() {
                     strokeWidth={2.5}
                     dot={false}
                     activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff', fill: activeMetric.color }}
-                    isAnimationActive={true}
+                    isAnimationActive={!zoomDomain}
                     animationDuration={500}
                     animationEasing="ease-out"
                     connectNulls={false}
@@ -685,7 +697,6 @@ export default function PlantDetail() {
                       Zariadenie offline
                     </div>
                   )}
-                  <span className="text-[10px] text-sage-300">Koliesko myši = zoom</span>
                 </div>
                 <div className="text-[11px] sm:text-xs text-sage-400">
                   Aktualizované: <span className="font-medium text-sage-500">{formatUpdatedAt(r.created_at)}</span>
