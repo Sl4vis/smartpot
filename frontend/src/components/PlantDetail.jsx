@@ -91,13 +91,21 @@ function formatUpdatedAt(isoString) {
   })}`;
 }
 
-function formatTickTime(ts, hours) {
+function formatTickTime(ts, showDate) {
   const d = new Date(ts);
-  if (hours >= 48) {
+  if (showDate) {
     return d.toLocaleDateString('sk', { day: 'numeric', month: 'numeric' }) + '\n' +
       d.toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
   }
   return d.toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
+}
+
+function shouldShowDateOnTicks(startTs, endTs) {
+  const start = new Date(startTs);
+  const end = new Date(endTs);
+  return start.getFullYear() !== end.getFullYear() ||
+    start.getMonth() !== end.getMonth() ||
+    start.getDate() !== end.getDate();
 }
 
 function generateTicks(start, end) {
@@ -720,6 +728,13 @@ export default function PlantDetail() {
     () => getYAxisDomain(visibleChartData, chartData, metric),
     [visibleChartData, chartData, metric]
   );
+  const renderedChartData = useMemo(
+    () => chartData.map(point => ({
+      ...point,
+      renderValue: point.offline ? yAxisDomain[0] : point[metric]
+    })),
+    [chartData, yAxisDomain, metric]
+  );
 
   const aiSuccess = analysis?.ai_success === true ||
     (analysis?.summary && !analysis.summary.includes('lokálne') && !analysis.summary.includes('nedostupná'));
@@ -742,6 +757,7 @@ export default function PlantDetail() {
   const xTickHours = zoomDomain
     ? (zoomDomain.x2 - zoomDomain.x1 > 24 * 3600000 ? 48 : 6)
     : hours;
+  const showDateOnTicks = shouldShowDateOnTicks(chartDomain[0], chartDomain[1]) || xTickHours >= 48;
 
   return (
     <div className="space-y-5">
@@ -848,7 +864,7 @@ export default function PlantDetail() {
           ) : (
             <>
               <ResponsiveContainer width="100%" height={270}>
-                <AreaChart data={visibleChartData} margin={{ top: 12, right: 0, left: 0, bottom: 8 }}>
+                <AreaChart data={renderedChartData} margin={{ top: 12, right: 0, left: 0, bottom: 8 }}>
                   <defs>
                     <linearGradient id={`grad-${metric}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={activeMetric.color} stopOpacity={0.20} />
@@ -875,12 +891,12 @@ export default function PlantDetail() {
                     type="number"
                     domain={chartDomain}
                     ticks={zoomDomain ? generateTicks(zoomDomain.x1, zoomDomain.x2) : ticks}
-                    tickFormatter={(ts) => formatTickTime(ts, xTickHours)}
+                    tickFormatter={(ts) => formatTickTime(ts, showDateOnTicks)}
                     tick={{ fontSize: 11, fill: '#a3af96', fontWeight: 500 }}
                     tickLine={false}
                     axisLine={{ stroke: '#eef1ea', strokeWidth: 1 }}
                     tickMargin={10}
-                    height={hours >= 48 && !zoomDomain ? 48 : 36}
+                    height={showDateOnTicks ? 48 : 36}
                     padding={{ left: 0, right: 0 }}
                     allowDataOverflow={true}
                   />
@@ -903,7 +919,7 @@ export default function PlantDetail() {
                   />
                   <Area
                     type="monotone"
-                    dataKey={metric}
+                    dataKey="renderValue"
                     stroke={activeMetric.color}
                     fill={`url(#grad-${metric})`}
                     fillOpacity={1}
