@@ -13,8 +13,7 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
-  PencilLine,
-  RotateCcw
+  PencilLine
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import {
@@ -185,12 +184,10 @@ export default function PlantDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
 
-  // Zoom state
+  // Zoom & pan state
   const [zoomDomain, setZoomDomain] = useState(null); // { x1, x2 } alebo null
   const chartContainerRef = useRef(null);
-  const isZoomed = zoomDomain !== null;
-
-  const resetZoom = useCallback(() => setZoomDomain(null), []);
+  const dragRef = useRef({ active: false, startX: 0, startDomain: null });
 
   // Pri zmene hodín resetni zoom
   const handleHoursChange = useCallback((h) => {
@@ -198,53 +195,113 @@ export default function PlantDetail() {
     setZoomDomain(null);
   }, []);
 
-  // Wheel zoom handler
-  const handleChartWheel = useCallback((e) => {
-    e.preventDefault();
-    const { chartData, ticks } = processChartData(history, hours);
-    if (!chartData || chartData.length < 2) return;
+  // Pomocné: full domain pre aktuálne dáta
+  const getFullDomain = useCallback(() => {
+    const { ticks: t } = processChartData(history, hours);
+    if (!t || t.length < 2) return null;
+    return { x1: t[0], x2: t[t.length - 1] };
+  }, [history, hours]);
 
-    const fullX1 = ticks[0];
-    const fullX2 = ticks[ticks.length - 1];
-    const currentX1 = zoomDomain ? zoomDomain.x1 : fullX1;
-    const currentX2 = zoomDomain ? zoomDomain.x2 : fullX2;
-    const range = currentX2 - currentX1;
-
-    // Pozícia myši v grafe (0-1)
+  // Natívny wheel listener s passive:false — blokuje scroll stránky nad grafom
+  useEffect(() => {
     const container = chartContainerRef.current;
     if (!container) return;
+
+    const onWheel = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const full = getFullDomain();
+      if (!full) return;
+
+      const currentX1 = zoomDomain ? zoomDomain.x1 : full.x1;
+      const currentX2 = zoomDomain ? zoomDomain.x2 : full.x2;
+      const range = currentX2 - currentX1;
+
+      const rect = container.getBoundingClientRect();
+      const chartLeftPad = 52;
+      const chartRightPad = 16;
+      const chartWidth = rect.width - chartLeftPad - chartRightPad;
+      const mouseX = Math.max(0, Math.min(1, (e.clientX - rect.left - chartLeftPad) / chartWidth));
+
+      const zoomFactor = e.deltaY < 0 ? 0.8 : 1.25;
+      const newRange = range * zoomFactor;
+
+      const minRange = 2 * 60 * 1000;
+      const maxRange = full.x2 - full.x1;
+      const clampedRange = Math.max(minRange, Math.min(maxRange, newRange));
+
+      if (clampedRange >= maxRange * 0.99) {
+        setZoomDomain(null);
+        return;
+      }
+
+      const center = currentX1 + mouseX * range;
+      let newX1 = center - mouseX * clampedRange;
+      let newX2 = center + (1 - mouseX) * clampedRange;
+
+      if (newX1 < full.x1) { newX2 += full.x1 - newX1; newX1 = full.x1; }
+      if (newX2 > full.x2) { newX1 -= newX2 - full.x2; newX2 = full.x2; }
+      newX1 = Math.max(full.x1, newX1);
+      newX2 = Math.min(full.x2, newX2);
+
+      setZoomDomain({ x1: Math.round(newX1), x2: Math.round(newX2) });
+    };
+
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => container.removeEventListener('wheel', onWheel);
+  }, [zoomDomain, getFullDomain]);
+
+  // Drag-to-pan handlers
+  const handleMouseDown = useCallback((e) => {
+    if (!zoomDomain) return; // len keď je zoomnuté
+    e.preventDefault();
+    dragRef.current = { active: true, startX: e.clientX, startDomain: { ...zoomDomain } };
+    document.body.style.userSelect = 'none';
+  }, [zoomDomain]);
+
+  const handleMouseMove = useCallback((e) => {
+    const d = dragRef.current;
+    if (!d.active || !d.startDomain) return;
+
+    const container = chartContainerRef.current;
+    if (!container) return;
+
+    const full = getFullDomain();
+    if (!full) return;
+
     const rect = container.getBoundingClientRect();
-    const chartLeftPad = 52;  // približne YAxis width + margin
+    const chartLeftPad = 52;
     const chartRightPad = 16;
     const chartWidth = rect.width - chartLeftPad - chartRightPad;
-    const mouseX = Math.max(0, Math.min(1, (e.clientX - rect.left - chartLeftPad) / chartWidth));
 
-    const zoomFactor = e.deltaY < 0 ? 0.8 : 1.25; // scroll up = zoom in
-    const newRange = range * zoomFactor;
+    const range = d.startDomain.x2 - d.startDomain.x1;
+    const pxDelta = d.startX - e.clientX;
+    const tsDelta = (pxDelta / chartWidth) * range;
 
-    // Minimálny zoom = 2 minúty, maximálny = celý rozsah
-    const minRange = 2 * 60 * 1000;
-    const maxRange = fullX2 - fullX1;
-    const clampedRange = Math.max(minRange, Math.min(maxRange, newRange));
-
-    if (clampedRange >= maxRange * 0.99) {
-      setZoomDomain(null);
-      return;
-    }
-
-    // Centrum zoomu na pozícii myši
-    const center = currentX1 + mouseX * range;
-    let newX1 = center - mouseX * clampedRange;
-    let newX2 = center + (1 - mouseX) * clampedRange;
+    let newX1 = d.startDomain.x1 + tsDelta;
+    let newX2 = d.startDomain.x2 + tsDelta;
 
     // Orezať na full range
-    if (newX1 < fullX1) { newX2 += fullX1 - newX1; newX1 = fullX1; }
-    if (newX2 > fullX2) { newX1 -= newX2 - fullX2; newX2 = fullX2; }
-    newX1 = Math.max(fullX1, newX1);
-    newX2 = Math.min(fullX2, newX2);
+    if (newX1 < full.x1) { newX2 += full.x1 - newX1; newX1 = full.x1; }
+    if (newX2 > full.x2) { newX1 -= newX2 - full.x2; newX2 = full.x2; }
 
     setZoomDomain({ x1: Math.round(newX1), x2: Math.round(newX2) });
-  }, [zoomDomain, history, hours]);
+  }, [getFullDomain]);
+
+  const handleMouseUp = useCallback(() => {
+    dragRef.current.active = false;
+    document.body.style.userSelect = '';
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
 
   // Prvé načítanie — len keď sa zmení id
   useEffect(() => {
@@ -491,16 +548,6 @@ export default function PlantDetail() {
               <activeMetric.icon className="w-4 h-4" style={{ color: activeMetric.color }} />
             </div>
             <h2 className="font-semibold text-green-900">{activeMetric.label}</h2>
-            {isZoomed && (
-              <button
-                onClick={resetZoom}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
-                title="Resetovať zoom"
-              >
-                <RotateCcw className="w-3 h-3" />
-                Reset
-              </button>
-            )}
           </div>
           <div className="flex gap-0.5 bg-sage-50 rounded-xl p-1">
             {[6, 12, 24, 48].map(h => (
@@ -521,8 +568,8 @@ export default function PlantDetail() {
 
         <div
           ref={chartContainerRef}
-          className="relative px-2 sm:px-3 pb-4 cursor-crosshair"
-          onWheel={handleChartWheel}
+          className={`relative px-2 sm:px-3 pb-4 ${zoomDomain ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`}
+          onMouseDown={handleMouseDown}
         >
           {/* Jemný loading overlay pri prepínaní hodín */}
           {chartLoading && (
@@ -559,6 +606,7 @@ export default function PlantDetail() {
                       stroke="#fecaca"
                       strokeDasharray="4 4"
                       strokeWidth={1}
+                      ifOverflow="hidden"
                     />
                   ))}
 
@@ -578,7 +626,7 @@ export default function PlantDetail() {
                     tickLine={false}
                     axisLine={{ stroke: '#eef1ea', strokeWidth: 1 }}
                     tickMargin={10}
-                    height={hours >= 48 && !isZoomed ? 48 : 36}
+                    height={hours >= 48 && !zoomDomain ? 48 : 36}
                     padding={{ left: 4, right: 4 }}
                     allowDataOverflow={true}
                   />
