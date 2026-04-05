@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -13,7 +13,8 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
-  PencilLine
+  PencilLine,
+  RotateCcw
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import {
@@ -183,6 +184,67 @@ export default function PlantDetail() {
   const [chartLoading, setChartLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
+
+  // Zoom state
+  const [zoomDomain, setZoomDomain] = useState(null); // { x1, x2 } alebo null
+  const chartContainerRef = useRef(null);
+  const isZoomed = zoomDomain !== null;
+
+  const resetZoom = useCallback(() => setZoomDomain(null), []);
+
+  // Pri zmene hodín resetni zoom
+  const handleHoursChange = useCallback((h) => {
+    setHours(h);
+    setZoomDomain(null);
+  }, []);
+
+  // Wheel zoom handler
+  const handleChartWheel = useCallback((e) => {
+    e.preventDefault();
+    const { chartData, ticks } = processChartData(history, hours);
+    if (!chartData || chartData.length < 2) return;
+
+    const fullX1 = ticks[0];
+    const fullX2 = ticks[ticks.length - 1];
+    const currentX1 = zoomDomain ? zoomDomain.x1 : fullX1;
+    const currentX2 = zoomDomain ? zoomDomain.x2 : fullX2;
+    const range = currentX2 - currentX1;
+
+    // Pozícia myši v grafe (0-1)
+    const container = chartContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const chartLeftPad = 52;  // približne YAxis width + margin
+    const chartRightPad = 16;
+    const chartWidth = rect.width - chartLeftPad - chartRightPad;
+    const mouseX = Math.max(0, Math.min(1, (e.clientX - rect.left - chartLeftPad) / chartWidth));
+
+    const zoomFactor = e.deltaY < 0 ? 0.8 : 1.25; // scroll up = zoom in
+    const newRange = range * zoomFactor;
+
+    // Minimálny zoom = 2 minúty, maximálny = celý rozsah
+    const minRange = 2 * 60 * 1000;
+    const maxRange = fullX2 - fullX1;
+    const clampedRange = Math.max(minRange, Math.min(maxRange, newRange));
+
+    if (clampedRange >= maxRange * 0.99) {
+      setZoomDomain(null);
+      return;
+    }
+
+    // Centrum zoomu na pozícii myši
+    const center = currentX1 + mouseX * range;
+    let newX1 = center - mouseX * clampedRange;
+    let newX2 = center + (1 - mouseX) * clampedRange;
+
+    // Orezať na full range
+    if (newX1 < fullX1) { newX2 += fullX1 - newX1; newX1 = fullX1; }
+    if (newX2 > fullX2) { newX1 -= newX2 - fullX2; newX2 = fullX2; }
+    newX1 = Math.max(fullX1, newX1);
+    newX2 = Math.min(fullX2, newX2);
+
+    setZoomDomain({ x1: Math.round(newX1), x2: Math.round(newX2) });
+  }, [zoomDomain, history, hours]);
 
   // Prvé načítanie — len keď sa zmení id
   useEffect(() => {
@@ -429,12 +491,22 @@ export default function PlantDetail() {
               <activeMetric.icon className="w-4 h-4" style={{ color: activeMetric.color }} />
             </div>
             <h2 className="font-semibold text-green-900">{activeMetric.label}</h2>
+            {isZoomed && (
+              <button
+                onClick={resetZoom}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                title="Resetovať zoom"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Reset
+              </button>
+            )}
           </div>
           <div className="flex gap-0.5 bg-sage-50 rounded-xl p-1">
             {[6, 12, 24, 48].map(h => (
               <button
                 key={h}
-                onClick={() => setHours(h)}
+                onClick={() => handleHoursChange(h)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
                   hours === h
                     ? 'bg-white text-green-700 shadow-sm ring-1 ring-sage-100'
@@ -447,7 +519,11 @@ export default function PlantDetail() {
           </div>
         </div>
 
-        <div className="relative px-2 sm:px-3 pb-4">
+        <div
+          ref={chartContainerRef}
+          className="relative px-2 sm:px-3 pb-4 cursor-crosshair"
+          onWheel={handleChartWheel}
+        >
           {/* Jemný loading overlay pri prepínaní hodín */}
           {chartLoading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-[1px] rounded-xl transition-opacity duration-200">
@@ -489,15 +565,22 @@ export default function PlantDetail() {
                   <XAxis
                     dataKey="ts"
                     type="number"
-                    domain={[ticks[0], ticks[ticks.length - 1]]}
-                    ticks={ticks}
-                    tickFormatter={(ts) => formatTickTime(ts, hours)}
+                    domain={zoomDomain ? [zoomDomain.x1, zoomDomain.x2] : [ticks[0], ticks[ticks.length - 1]]}
+                    ticks={zoomDomain
+                      ? generateTicks(zoomDomain.x1, zoomDomain.x2, zoomDomain.x2 - zoomDomain.x1 > 12 * 3600000 ? 48 : hours)
+                      : ticks
+                    }
+                    tickFormatter={(ts) => formatTickTime(ts, zoomDomain
+                      ? (zoomDomain.x2 - zoomDomain.x1 > 24 * 3600000 ? 48 : 6)
+                      : hours
+                    )}
                     tick={{ fontSize: 11, fill: '#a3af96', fontWeight: 500 }}
                     tickLine={false}
                     axisLine={{ stroke: '#eef1ea', strokeWidth: 1 }}
                     tickMargin={10}
-                    height={hours >= 48 ? 48 : 36}
+                    height={hours >= 48 && !isZoomed ? 48 : 36}
                     padding={{ left: 4, right: 4 }}
+                    allowDataOverflow={true}
                   />
                   <YAxis
                     tick={{ fontSize: 11, fill: '#889978', fontWeight: 500 }}
@@ -546,15 +629,19 @@ export default function PlantDetail() {
               </ResponsiveContainer>
 
               {/* Legenda offline zón */}
-              {offlineZones.length > 0 && (
-                <div className="flex items-center gap-1.5 px-3 mt-1 text-[10px] text-sage-400">
-                  <span className="inline-block w-3 h-2 rounded-sm bg-red-50 border border-red-200" />
-                  Zariadenie offline
+              <div className="flex items-center justify-between px-3 mt-1">
+                <div className="flex items-center gap-3">
+                  {offlineZones.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-[10px] text-sage-400">
+                      <span className="inline-block w-3 h-2 rounded-sm bg-red-50 border border-red-200" />
+                      Zariadenie offline
+                    </div>
+                  )}
+                  <span className="text-[10px] text-sage-300">Koliesko myši = zoom</span>
                 </div>
-              )}
-
-              <div className="mt-2 px-3 text-right text-[11px] sm:text-xs text-sage-400">
-                Aktualizované: <span className="font-medium text-sage-500">{formatUpdatedAt(r.created_at)}</span>
+                <div className="text-[11px] sm:text-xs text-sage-400">
+                  Aktualizované: <span className="font-medium text-sage-500">{formatUpdatedAt(r.created_at)}</span>
+                </div>
               </div>
             </>
           )}
