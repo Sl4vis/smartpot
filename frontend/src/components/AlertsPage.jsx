@@ -368,7 +368,7 @@ export default function AlertsPage() {
   });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 page-shell">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-green-900">Upozornenia</h1>
