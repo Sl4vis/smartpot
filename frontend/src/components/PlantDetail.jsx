@@ -13,7 +13,10 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
-  PencilLine
+  PencilLine,
+  Clock3,
+  TrendingDown,
+  Activity
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import {
@@ -351,6 +354,208 @@ function CustomTooltipCursor({ points, payload, viewBox, color }) {
     />
   );
 }
+
+
+function formatWateringEta(hours) {
+  if (hours == null || !Number.isFinite(hours)) return 'Bez odhadu';
+  if (hours <= 0.5) return 'Teraz';
+  if (hours < 24) return `Cca ${Math.round(hours)} h`;
+
+  const days = hours / 24;
+  if (days < 7) {
+    const roundedDays = Math.round(days * 10) / 10;
+    return Number.isInteger(roundedDays) ? `Cca ${roundedDays} dňa` : `Cca ${roundedDays} dňa`;
+  }
+
+  return 'Viac dní';
+}
+
+function getSoilPoints(rawHistory) {
+  return (Array.isArray(rawHistory) ? rawHistory : [])
+    .map(point => ({
+      ...point,
+      ts: new Date(point.created_at).getTime()
+    }))
+    .filter(point => Number.isFinite(point.ts) && typeof point.soil_moisture === 'number' && Number.isFinite(point.soil_moisture))
+    .sort((a, b) => a.ts - b.ts);
+}
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getSmartWateringInsights(plant, rawHistory, waterLog, analysis) {
+  const soilPoints = getSoilPoints(rawHistory);
+  const minSoil = plant?.min_soil_moisture ?? 30;
+
+  if (soilPoints.length < 2) {
+    return [
+      {
+        key: 'eta',
+        icon: Clock3,
+        label: 'Ďalšie polievanie',
+        value: 'Málo dát',
+        description: 'Na presnejší odhad potrebujem aspoň pár meraní vlhkosti.',
+        tone: 'slate'
+      },
+      {
+        key: 'trend',
+        icon: TrendingDown,
+        label: 'Trend vlhkosti',
+        value: 'Neznámy',
+        description: 'Zatiaľ sa nedá spoľahlivo určiť, či vlhkosť klesá rýchlo alebo pomaly.',
+        tone: 'slate'
+      },
+      {
+        key: 'reaction',
+        icon: Activity,
+        label: 'Reakcia po poliatí',
+        value: 'Bez dát',
+        description: 'Po ďalšom poliatí viem skontrolovať, či senzor naozaj zareagoval.',
+        tone: 'slate'
+      }
+    ];
+  }
+
+  const latestPoint = soilPoints[soilPoints.length - 1];
+  const recentWindowStart = latestPoint.ts - 8 * 60 * 60 * 1000;
+  const recentPoints = soilPoints.filter(point => point.ts >= recentWindowStart);
+  const trendPoints = recentPoints.length >= 3 ? recentPoints : soilPoints.slice(-Math.min(8, soilPoints.length));
+  const trendStart = trendPoints[0];
+  const trendDurationHours = Math.max((latestPoint.ts - trendStart.ts) / 3600000, 1 / 60);
+  const moistureDropPerHour = Math.max(0, (trendStart.soil_moisture - latestPoint.soil_moisture) / trendDurationHours);
+  const distanceToMin = latestPoint.soil_moisture - minSoil;
+
+  let estimatedHours = null;
+  if (typeof analysis?.next_watering_hours === 'number' && Number.isFinite(analysis.next_watering_hours)) {
+    estimatedHours = analysis.next_watering_hours;
+  } else if (distanceToMin <= 0) {
+    estimatedHours = 0;
+  } else if (moistureDropPerHour >= 0.08) {
+    estimatedHours = clampNumber(distanceToMin / moistureDropPerHour, 0, 24 * 14);
+  }
+
+  let etaValue = formatWateringEta(estimatedHours);
+  let etaDescription = estimatedHours == null
+    ? `Vlhkosť je ${Math.round(latestPoint.soil_moisture * 10) / 10}% a trend je zatiaľ príliš stabilný na presný odhad.`
+    : estimatedHours <= 0.5
+      ? `Aktuálna vlhkosť ${Math.round(latestPoint.soil_moisture * 10) / 10}% je pod minimom ${minSoil}%.`
+      : `Pri súčasnom poklese by mala rastlina klesnúť k hranici ${minSoil}% približne za ${formatWateringEta(estimatedHours).toLowerCase()}.`;
+  let etaTone = estimatedHours != null && estimatedHours <= 6 ? 'red' : estimatedHours != null && estimatedHours <= 24 ? 'amber' : 'blue';
+  if (estimatedHours == null) etaTone = 'slate';
+
+  let trendValue = 'Stabilná';
+  let trendDescription = 'Vlhkosť sa drží približne na rovnakej úrovni.';
+  let trendTone = 'green';
+
+  if (moistureDropPerHour >= 1.2) {
+    trendValue = 'Klesá rýchlo';
+    trendDescription = `Za posledných ${Math.max(1, Math.round(trendDurationHours))} h klesala asi o ${moistureDropPerHour.toFixed(1)} % za hodinu.`;
+    trendTone = 'red';
+  } else if (moistureDropPerHour >= 0.35) {
+    trendValue = 'Klesá pomaly';
+    trendDescription = `Trend je zostupný, približne ${moistureDropPerHour.toFixed(1)} % za hodinu.`;
+    trendTone = 'amber';
+  } else if (moistureDropPerHour > 0.08) {
+    trendValue = 'Klesá veľmi mierne';
+    trendDescription = `Pokles je zatiaľ mierny, približne ${moistureDropPerHour.toFixed(1)} % za hodinu.`;
+    trendTone = 'blue';
+  }
+
+  const sortedWaterLog = (Array.isArray(waterLog) ? waterLog : [])
+    .map(item => ({ ...item, ts: new Date(item.created_at).getTime() }))
+    .filter(item => Number.isFinite(item.ts))
+    .sort((a, b) => b.ts - a.ts);
+
+  let reactionValue = 'Bez záznamu';
+  let reactionDescription = 'Keď zaznamenáš polievanie, skontrolujem, či sa vlhkosť po ňom naozaj zdvihla.';
+  let reactionTone = 'slate';
+
+  if (sortedWaterLog.length > 0) {
+    const lastWater = sortedWaterLog[0];
+    const beforePoint = [...soilPoints].reverse().find(point => point.ts <= lastWater.ts && point.ts >= lastWater.ts - 6 * 60 * 60 * 1000);
+    const afterPoints = soilPoints.filter(point => point.ts > lastWater.ts && point.ts <= lastWater.ts + 6 * 60 * 60 * 1000);
+
+    if (!beforePoint || afterPoints.length === 0) {
+      reactionValue = 'Čaká na dáta';
+      reactionDescription = 'Po poslednom poliatí ešte nemám dosť meraní na vyhodnotenie reakcie senzora.';
+      reactionTone = 'slate';
+    } else {
+      const bestAfter = afterPoints.reduce((best, point) => point.soil_moisture > best.soil_moisture ? point : best, afterPoints[0]);
+      const delta = bestAfter.soil_moisture - beforePoint.soil_moisture;
+      const waterTime = new Date(lastWater.ts).toLocaleString('sk', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+      if (delta >= 2) {
+        reactionValue = `Senzor zareagoval +${Math.round(delta * 10) / 10}%`;
+        reactionDescription = `Po poliatí ${waterTime} stúpla vlhkosť z ${Math.round(beforePoint.soil_moisture * 10) / 10}% na ${Math.round(bestAfter.soil_moisture * 10) / 10}%.`;
+        reactionTone = 'green';
+      } else if (delta >= 0.5) {
+        reactionValue = 'Reakcia je slabšia';
+        reactionDescription = `Po poslednom poliatí stúpla vlhkosť len o ${Math.round(delta * 10) / 10}%. Oplatí sa skontrolovať dávku vody alebo umiestnenie senzora.`;
+        reactionTone = 'amber';
+      } else {
+        reactionValue = 'Senzor nereagoval';
+        reactionDescription = `Po poliatí ${waterTime} sa vlhkosť takmer nezmenila. Skontroluj, či voda trafila koreňovú zónu a senzor.`;
+        reactionTone = 'red';
+      }
+    }
+  }
+
+  return [
+    {
+      key: 'eta',
+      icon: Clock3,
+      label: 'Ďalšie polievanie',
+      value: etaValue,
+      description: etaDescription,
+      tone: etaTone
+    },
+    {
+      key: 'trend',
+      icon: TrendingDown,
+      label: 'Trend vlhkosti',
+      value: trendValue,
+      description: trendDescription,
+      tone: trendTone
+    },
+    {
+      key: 'reaction',
+      icon: Activity,
+      label: 'Reakcia po poliatí',
+      value: reactionValue,
+      description: reactionDescription,
+      tone: reactionTone
+    }
+  ];
+}
+
+const INSIGHT_TONE_STYLES = {
+  blue: {
+    card: 'border-blue-100 bg-blue-50/50',
+    iconWrap: 'bg-blue-100',
+    icon: 'text-blue-600'
+  },
+  green: {
+    card: 'border-green-100 bg-green-50/50',
+    iconWrap: 'bg-green-100',
+    icon: 'text-green-600'
+  },
+  amber: {
+    card: 'border-amber-100 bg-amber-50/60',
+    iconWrap: 'bg-amber-100',
+    icon: 'text-amber-600'
+  },
+  red: {
+    card: 'border-red-100 bg-red-50/60',
+    iconWrap: 'bg-red-100',
+    icon: 'text-red-600'
+  },
+  slate: {
+    card: 'border-sage-100 bg-sage-50/70',
+    iconWrap: 'bg-white',
+    icon: 'text-sage-500'
+  }
+};
 
 export default function PlantDetail() {
   const { id } = useParams();
@@ -736,6 +941,11 @@ export default function PlantDetail() {
     [chartData, yAxisDomain, metric]
   );
 
+  const smartWateringInsights = useMemo(
+    () => getSmartWateringInsights(plant, history, waterLog, analysis),
+    [plant, history, waterLog, analysis]
+  );
+
   const aiSuccess = analysis?.ai_success === true ||
     (analysis?.summary && !analysis.summary.includes('lokálne') && !analysis.summary.includes('nedostupná'));
   const aiProvider = analysis?.ai_provider === 'groq' ? 'Groq (Llama 3.3)' :
@@ -963,6 +1173,43 @@ export default function PlantDetail() {
           {analyzing ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Brain className="w-4 h-4 shrink-0" />}
           <span className="truncate">{analyzing ? 'Analyzujem...' : 'AI Analýza'}</span>
         </button>
+      </div>
+
+      <div className="card p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="font-semibold text-green-900 flex items-center gap-2">
+              <Droplets className="w-4 h-4 text-blue-500" /> Smart odporúčanie polievania
+            </h3>
+            <p className="text-xs text-sage-400 mt-1 leading-relaxed">
+              Odhad je postavený na priebehu vlhkosti, poslednom poliatí a reakcii senzora.
+            </p>
+          </div>
+          <span className="self-start rounded-lg bg-sage-50 px-2.5 py-1 text-[11px] font-medium text-sage-500">
+            Živé insighty
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          {smartWateringInsights.map((insight) => {
+            const tone = INSIGHT_TONE_STYLES[insight.tone] || INSIGHT_TONE_STYLES.slate;
+            const Icon = insight.icon;
+            return (
+              <div key={insight.key} className={`rounded-2xl border p-4 ${tone.card}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-sage-500">{insight.label}</p>
+                    <p className="mt-1 text-base sm:text-lg font-semibold text-green-900 leading-tight">{insight.value}</p>
+                  </div>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${tone.iconWrap}`}>
+                    <Icon className={`w-5 h-5 ${tone.icon}`} />
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-sage-500 leading-relaxed">{insight.description}</p>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {analysis && (
