@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Leaf, LayoutDashboard, Bell, PlusCircle, Menu, X } from 'lucide-react';
+import { Leaf, LayoutDashboard, Bell, Menu, X } from 'lucide-react';
 
 const nav = [
   { path: '/', icon: LayoutDashboard, label: 'Prehľad' },
-  { path: '/add', icon: PlusCircle, label: 'Pridať' },
   { path: '/alerts', icon: Bell, label: 'Alerty' },
 ];
 
