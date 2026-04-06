@@ -21,8 +21,8 @@ export default function AmbientBackground() {
       const current = currentRef.current;
       const target = targetRef.current;
 
-      current.x += (target.x - current.x) * 0.08;
-      current.y += (target.y - current.y) * 0.08;
+      current.x += (target.x - current.x) * 0.075;
+      current.y += (target.y - current.y) * 0.075;
       setVars();
       rafRef.current = window.requestAnimationFrame(animate);
     };
@@ -47,7 +47,7 @@ export default function AmbientBackground() {
       updateTarget(touch.clientX, touch.clientY);
     };
 
-    const handleMouseLeave = () => {
+    const resetTarget = () => {
       targetRef.current = { x: 50, y: 22 };
     };
 
@@ -55,24 +55,30 @@ export default function AmbientBackground() {
     rafRef.current = window.requestAnimationFrame(animate);
     window.addEventListener('pointermove', handlePointerMove, { passive: true });
     window.addEventListener('touchmove', handleTouchMove, { passive: true });
-    window.addEventListener('mouseout', handleMouseLeave);
+    window.addEventListener('mouseout', resetTarget);
+    window.addEventListener('blur', resetTarget);
 
     return () => {
       window.cancelAnimationFrame(rafRef.current);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('mouseout', handleMouseLeave);
+      window.removeEventListener('mouseout', resetTarget);
+      window.removeEventListener('blur', resetTarget);
     };
   }, []);
 
   return (
     <div ref={rootRef} className="ambient-bg" aria-hidden="true">
       <div className="ambient-mesh" />
+      <div className="ambient-vignette" />
       <div className="ambient-blob ambient-blob-leaf" />
+      <div className="ambient-blob ambient-blob-leaf-2" />
       <div className="ambient-blob ambient-blob-water" />
+      <div className="ambient-blob ambient-blob-water-2" />
       <div className="ambient-blob ambient-blob-sun" />
-      <div className="ambient-cursor" />
-      <div className="ambient-noise" />
+      <div className="ambient-cursor-halo" />
+      <div className="ambient-cursor-core" />
+      <div className="ambient-grain" />
     </div>
   );
 }
