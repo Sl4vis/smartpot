@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { Leaf, LayoutDashboard, Bell, Menu, X } from 'lucide-react';
+import AmbientBackground from './AmbientBackground';
 
 const nav = [
   { path: '/', icon: LayoutDashboard, label: 'Prehľad' },
@@ -12,8 +13,9 @@ export default function Layout() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-white/70 border-b border-green-100/50 nav-shell">
+    <div className="min-h-screen relative isolate overflow-hidden">
+      <AmbientBackground />
+      <header className="relative sticky top-0 z-50 backdrop-blur-md bg-white/72 border-b border-green-100/50 nav-shell">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 nav-item-animate stagger-1">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center"
@@ -63,7 +65,7 @@ export default function Layout() {
         )}
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-8 pb-8 sm:pb-8">
+      <main className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-8 pb-8 sm:pb-8">
         <Outlet />
       </main>
     </div>
