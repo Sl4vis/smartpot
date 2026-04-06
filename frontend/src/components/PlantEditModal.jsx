@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, Loader2, Save, Sparkles, Wifi, WifiOff, X } from 'lucide-react';
 import { getAvailableDevices, suggestThresholds, updatePlant } from '../services/api';
 
@@ -136,10 +137,10 @@ export default function PlantEditModal({ isOpen, onClose, plant, onSaved }) {
 
   if (!isOpen || !plant) return null;
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-sage-900/30 backdrop-blur-sm sm:p-4" onClick={onClose}>
-      <div className="card w-full sm:max-w-2xl max-h-[85vh] max-h-[85dvh] sm:max-h-[90vh] overflow-hidden rounded-b-none sm:rounded-b-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-sage-100 bg-white">
+  const modalContent = (
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-sage-900/35 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
+      <div className="card w-full sm:max-w-2xl max-h-[92dvh] sm:max-h-[90vh] overflow-hidden rounded-t-3xl rounded-b-none sm:rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 px-4 sm:px-6 py-4 sm:py-5 border-b border-sage-100 bg-white">
           <div>
             <h2 className="text-xl font-bold text-green-900">Upraviť rastlinu</h2>
             <p className="text-sm text-sage-500">Predvyplnené údaje môžeš hneď upraviť.</p>
@@ -154,8 +155,8 @@ export default function PlantEditModal({ isOpen, onClose, plant, onSaved }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="overflow-y-auto max-h-[calc(85vh-88px)] sm:max-h-[calc(90vh-88px)]">
-          <div className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="overflow-y-auto max-h-[calc(92dvh-76px)] sm:max-h-[calc(90vh-88px)] overscroll-contain">
+          <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
             {error && (
               <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600">{error}</div>
             )}
@@ -300,7 +301,7 @@ export default function PlantEditModal({ isOpen, onClose, plant, onSaved }) {
             </div>
           </div>
 
-          <div className="px-6 py-4 border-t border-sage-100 bg-white flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
+          <div className="px-4 sm:px-6 py-4 border-t border-sage-100 bg-white flex flex-col-reverse sm:flex-row gap-3 sm:justify-end pb-[max(1rem,env(safe-area-inset-bottom))]">
             <button type="button" onClick={onClose} className="btn-secondary justify-center">Zrušiť</button>
             <button type="submit" disabled={saving} className="btn-primary justify-center disabled:opacity-50">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -311,4 +312,6 @@ export default function PlantEditModal({ isOpen, onClose, plant, onSaved }) {
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
