@@ -21,8 +21,8 @@ export default function AmbientBackground() {
       const current = currentRef.current;
       const target = targetRef.current;
 
-      current.x += (target.x - current.x) * 0.075;
-      current.y += (target.y - current.y) * 0.075;
+      current.x += (target.x - current.x) * 0.085;
+      current.y += (target.y - current.y) * 0.085;
       setVars();
       rafRef.current = window.requestAnimationFrame(animate);
     };
@@ -69,6 +69,7 @@ export default function AmbientBackground() {
 
   return (
     <div ref={rootRef} className="ambient-bg" aria-hidden="true">
+      <div className="ambient-base" />
       <div className="ambient-mesh" />
       <div className="ambient-vignette" />
       <div className="ambient-blob ambient-blob-leaf" />
@@ -76,7 +77,10 @@ export default function AmbientBackground() {
       <div className="ambient-blob ambient-blob-water" />
       <div className="ambient-blob ambient-blob-water-2" />
       <div className="ambient-blob ambient-blob-sun" />
+      <div className="ambient-blob ambient-blob-sun-2" />
+      <div className="ambient-beam" />
       <div className="ambient-cursor-halo" />
+      <div className="ambient-cursor-ring" />
       <div className="ambient-cursor-core" />
       <div className="ambient-grain" />
     </div>
