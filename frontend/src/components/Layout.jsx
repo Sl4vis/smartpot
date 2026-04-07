@@ -26,10 +26,7 @@ export default function Layout() {
                 style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}>
                 <Leaf className="w-5 h-5 text-white" />
               </div>
-              <div className="flex flex-col">
-                <span className="text-lg font-bold text-green-900 dark:text-green-100">SmartPot</span>
-                <span className="text-[9px] font-mono font-medium text-sage-400 dark:text-green-700 tracking-widest uppercase leading-none">v1.0</span>
-              </div>
+              <span className="text-lg font-bold text-green-900 dark:text-green-100">SmartPot</span>
             </Link>
 
             <div className="flex items-center gap-2">
@@ -86,15 +83,6 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      <footer className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 pb-6">
-        <div className="pt-5 border-t border-sage-100/40 dark:border-green-900/20 flex items-center justify-between text-xs text-sage-400 dark:text-green-800 font-mono">
-          <span>SmartPot v1.0</span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 dark:bg-green-400 dark:shadow-[0_0_4px_rgba(74,222,128,0.4)]" />
-            online
-          </span>
-        </div>
-      </footer>
     </div>
   );
 }
