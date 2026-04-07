@@ -3,7 +3,7 @@ import { useTheme } from './ThemeProvider';
 
 const PARTICLE_COUNT = 100;
 const CONN_DIST = 140;
-const CURSOR_DIST = 200;
+const CURSOR_DIST = 120;
 
 class Dot {
   constructor(W, H) { this.W = W; this.H = H; this.init(); }
@@ -44,16 +44,16 @@ class Dot {
       const f = (CURSOR_DIST - dist) / CURSOR_DIST;
       const ang = Math.atan2(dy, dx);
       if (this.type === 'glow') {
-        // Glow particles attracted to cursor
-        this.vx += Math.cos(ang) * f * 0.18;
-        this.vy += Math.sin(ang) * f * 0.18;
-        this.alpha = Math.min(1, this.baseAlpha + f * 0.5);
-        this.r = this.baseR * (1 + f * 2.5);
+        // Glow particles gently drift toward cursor
+        this.vx += Math.cos(ang) * f * 0.03;
+        this.vy += Math.sin(ang) * f * 0.03;
+        this.alpha = Math.min(1, this.baseAlpha + f * 0.3);
+        this.r = this.baseR * (1 + f * 1.2);
       } else {
-        // Regular dots gently pushed away
-        this.vx -= Math.cos(ang) * f * 0.08;
-        this.vy -= Math.sin(ang) * f * 0.08;
-        this.r = this.baseR * (1 + f * 0.6);
+        // Regular dots softly pushed away
+        this.vx -= Math.cos(ang) * f * 0.02;
+        this.vy -= Math.sin(ang) * f * 0.02;
+        this.r = this.baseR * (1 + f * 0.3);
       }
     } else {
       this.r += (this.baseR - this.r) * 0.06;
@@ -113,7 +113,7 @@ export default function InteractiveBg() {
 
       const rgb = isDark ? '74,222,128' : '34,197,94';
       const connAlphaScale = isDark ? 0.18 : 0.09;
-      const cursorAlphaScale = isDark ? 0.25 : 0.14;
+      const cursorAlphaScale = isDark ? 0.14 : 0.07;
 
       // Particle-to-particle connections
       for (let i = 0; i < dots.length; i++) {
@@ -149,13 +149,13 @@ export default function InteractiveBg() {
         }
 
         // Cursor glow
-        const g = ctx.createRadialGradient(mx, my, 0, mx, my, 90);
-        g.addColorStop(0, `rgba(${rgb},${isDark ? 0.08 : 0.04})`);
-        g.addColorStop(0.5, `rgba(${rgb},${isDark ? 0.03 : 0.01})`);
+        const g = ctx.createRadialGradient(mx, my, 0, mx, my, 40);
+        g.addColorStop(0, `rgba(${rgb},${isDark ? 0.05 : 0.03})`);
+        g.addColorStop(0.6, `rgba(${rgb},${isDark ? 0.015 : 0.008})`);
         g.addColorStop(1, `rgba(${rgb},0)`);
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(mx, my, 90, 0, Math.PI * 2);
+        ctx.arc(mx, my, 40, 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -167,8 +167,8 @@ export default function InteractiveBg() {
         if (d.type === 'glow') {
           const gs = d.glowR * (d.r / d.baseR);
           const g = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, gs);
-          g.addColorStop(0, `rgba(${rgb},${d.alpha * (isDark ? 0.5 : 0.25)})`);
-          g.addColorStop(0.4, `rgba(${rgb},${d.alpha * (isDark ? 0.15 : 0.08)})`);
+          g.addColorStop(0, `rgba(${rgb},${d.alpha * (isDark ? 0.3 : 0.15)})`);
+          g.addColorStop(0.4, `rgba(${rgb},${d.alpha * (isDark ? 0.08 : 0.04)})`);
           g.addColorStop(1, `rgba(${rgb},0)`);
           ctx.fillStyle = g;
           ctx.beginPath();
