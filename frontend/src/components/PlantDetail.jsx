@@ -531,29 +531,29 @@ function getSmartWateringInsights(plant, rawHistory, waterLog, analysis) {
 
 const INSIGHT_TONE_STYLES = {
   blue: {
-    card: 'border-blue-100 bg-blue-50/50',
-    iconWrap: 'bg-blue-100',
-    icon: 'text-blue-600'
+    card: 'border-blue-100 dark:border-blue-900/20 bg-blue-50 dark:bg-blue-950/20/50 dark:bg-blue-950/20',
+    iconWrap: 'bg-blue-100 dark:bg-blue-900/20',
+    icon: 'text-blue-600 dark:text-blue-400'
   },
   green: {
-    card: 'border-green-100 bg-green-50/50',
-    iconWrap: 'bg-green-100',
-    icon: 'text-green-600'
+    card: 'border-green-100 dark:border-green-900/30 bg-green-50 dark:bg-green-950/40/50 dark:bg-green-900/30',
+    iconWrap: 'bg-green-100 dark:bg-green-900/30',
+    icon: 'text-green-600 dark:text-green-500'
   },
   amber: {
-    card: 'border-amber-100 bg-amber-50/60',
-    iconWrap: 'bg-amber-100',
-    icon: 'text-amber-600'
+    card: 'border-amber-100 dark:border-amber-900/20 bg-amber-50 dark:bg-amber-950/20/60 dark:bg-amber-950/20',
+    iconWrap: 'bg-amber-100 dark:bg-amber-900/20',
+    icon: 'text-amber-600 dark:text-amber-400'
   },
   red: {
-    card: 'border-red-100 bg-red-50/60',
-    iconWrap: 'bg-red-100',
-    icon: 'text-red-600'
+    card: 'border-red-100 dark:border-red-900/20 bg-red-50 dark:bg-red-950/20/60 dark:bg-red-950/20',
+    iconWrap: 'bg-red-100 dark:bg-red-900/20',
+    icon: 'text-red-600 dark:text-red-400'
   },
   slate: {
-    card: 'border-sage-100 bg-sage-50/70',
-    iconWrap: 'bg-white',
-    icon: 'text-sage-500'
+    card: 'border-sage-100 dark:border-green-900/20 bg-sage-50 dark:bg-green-950/40/70 dark:bg-green-950/40',
+    iconWrap: 'bg-white dark:bg-green-950/50',
+    icon: 'text-sage-500 dark:text-green-700'
   }
 };
 
@@ -956,7 +956,7 @@ export default function PlantDetail() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-2 border-green-200 border-t-green-500 rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-green-200 dark:border-green-800/30 border-t-green-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -973,18 +973,18 @@ export default function PlantDetail() {
     <div className="space-y-4 sm:space-y-5 page-shell">
       <div className="flex items-start justify-between gap-3 sm:gap-4 section-reveal stagger-1">
         <div className="flex items-start gap-3 min-w-0">
-          <Link to="/" className="p-2 -ml-2 rounded-xl hover:bg-green-50 transition-colors">
-            <ArrowLeft className="w-5 h-5 text-sage-500" />
+          <Link to="/" className="p-2 -ml-2 rounded-xl hover:bg-green-50 dark:hover:bg-green-900/30 dark:bg-green-950/40 transition-colors">
+            <ArrowLeft className="w-5 h-5 text-sage-500 dark:text-green-700" />
           </Link>
           <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-green-900 truncate flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-green-900 dark:text-green-100 truncate flex items-center gap-2">
               <span className="text-xl sm:text-2xl select-none shrink-0">{getPlantEmoji(plant)}</span>
               <span className="truncate">{plant.name}</span>
               <span className="md:hidden shrink-0">
                 <MobileStatusBadge status={deviceStatus} />
               </span>
             </h1>
-            <p className="text-sm text-sage-500 truncate">{plant.species} · {plant.location}</p>
+            <p className="text-sm text-sage-500 dark:text-green-700 truncate">{plant.species} · {plant.location}</p>
           </div>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
@@ -995,7 +995,7 @@ export default function PlantDetail() {
           </button>
           <button
             onClick={handleDelete}
-            className="p-2 sm:p-2.5 rounded-xl text-sage-400 hover:text-red-500 hover:bg-red-50 transition-all"
+            className="p-2 sm:p-2.5 rounded-xl text-sage-400 dark:text-green-700 hover:text-red-500 dark:text-red-400 hover:bg-red-50 dark:bg-red-950/20 transition-all"
             title="Odstrániť rastlinu"
           >
             <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1011,15 +1011,15 @@ export default function PlantDetail() {
             <button
               key={m.key}
               onClick={() => setMetric(m.key)}
-              className={`card p-4 text-left transition-all ${active ? 'ring-2 ring-green-400/40 border-green-200' : ''}`}
+              className={`card p-4 text-left transition-all ${active ? 'ring-2 ring-green-400/40 border-green-200 dark:border-green-800/30' : ''}`}
             >
               <div className="flex items-center gap-2 mb-2">
                 <m.icon className="w-4 h-4" style={{ color: m.color }} />
-                <span className="text-xs text-sage-500">{m.label}</span>
+                <span className="text-xs text-sage-500 dark:text-green-700">{m.label}</span>
               </div>
-              <p className="text-xl font-bold text-green-900">
+              <p className="text-xl font-bold text-green-900 dark:text-green-100">
                 {val != null ? Math.round(val * 10) / 10 : '—'}
-                <span className="text-sm font-normal text-sage-400">{m.unit}</span>
+                <span className="text-sm font-normal text-sage-400 dark:text-green-700">{m.unit}</span>
               </p>
             </button>
           );
@@ -1032,17 +1032,17 @@ export default function PlantDetail() {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${activeMetric.color}14` }}>
               <activeMetric.icon className="w-4 h-4" style={{ color: activeMetric.color }} />
             </div>
-            <h2 className="font-semibold text-green-900 truncate">{activeMetric.label}</h2>
+            <h2 className="font-semibold text-green-900 dark:text-green-100 truncate">{activeMetric.label}</h2>
           </div>
-          <div className="flex gap-0.5 bg-sage-50 rounded-xl p-1 shrink-0">
+          <div className="flex gap-0.5 bg-sage-50 dark:bg-green-950/40 rounded-xl p-1 shrink-0">
             {[6, 12, 24, 48].map(h => (
               <button
                 key={h}
                 onClick={() => handleHoursChange(h)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
                   hours === h
-                    ? 'bg-white text-green-700 shadow-sm ring-1 ring-sage-100'
-                    : 'text-sage-400 hover:text-sage-600'
+                    ? 'bg-white dark:bg-green-950/50 text-green-700 dark:text-green-500 shadow-sm ring-1 ring-sage-100'
+                    : 'text-sage-400 dark:text-green-700 hover:text-sage-600 dark:text-green-700'
                 }`}
               >
                 {h}h
@@ -1062,13 +1062,13 @@ export default function PlantDetail() {
           style={{ touchAction: 'none' }}
         >
           {chartLoading && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-[1px] rounded-xl transition-opacity duration-200">
-              <div className="w-5 h-5 border-2 border-green-200 border-t-green-500 rounded-full animate-spin" />
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white dark:bg-green-950/50/60 backdrop-blur-[1px] rounded-xl transition-opacity duration-200">
+              <div className="w-5 h-5 border-2 border-green-200 dark:border-green-800/30 border-t-green-500 rounded-full animate-spin" />
             </div>
           )}
 
           {chartData.length === 0 && offlineZones.length === 0 ? (
-            <div className="flex items-center justify-center h-[260px] text-sm text-sage-400">
+            <div className="flex items-center justify-center h-[260px] text-sm text-sage-400 dark:text-green-700">
               Žiadne dáta pre zvolený interval
             </div>
           ) : (
@@ -1148,14 +1148,14 @@ export default function PlantDetail() {
               <div className="flex items-center justify-between px-3 mt-1 gap-3">
                 <div className="flex items-center gap-3 min-h-[16px]">
                   {visibleOfflineZones.length > 0 && (
-                    <div className="flex items-center gap-1.5 text-[10px] text-sage-400">
-                      <span className="inline-block w-3 h-2 rounded-sm bg-red-50 border border-red-200" />
+                    <div className="flex items-center gap-1.5 text-[10px] text-sage-400 dark:text-green-700">
+                      <span className="inline-block w-3 h-2 rounded-sm bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/20" />
                       Zariadenie offline
                     </div>
                   )}
                 </div>
-                <div className="text-[11px] sm:text-xs text-sage-400 text-right">
-                  Aktualizované: <span className="font-medium text-sage-500">{formatUpdatedAt(r.created_at)}</span>
+                <div className="text-[11px] sm:text-xs text-sage-400 dark:text-green-700 text-right">
+                  Aktualizované: <span className="font-medium text-sage-500 dark:text-green-700">{formatUpdatedAt(r.created_at)}</span>
                 </div>
               </div>
             </>
@@ -1178,14 +1178,14 @@ export default function PlantDetail() {
       <div className="card p-4 sm:p-5 mobile-compact-card section-reveal stagger-5">
         <div className="mb-3 flex flex-col gap-2 sm:mb-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h3 className="font-semibold text-green-900 flex items-center gap-2 text-[15px] sm:text-base">
-              <Droplets className="w-4 h-4 text-blue-500" /> Smart odporúčanie polievania
+            <h3 className="font-semibold text-green-900 dark:text-green-100 flex items-center gap-2 text-[15px] sm:text-base">
+              <Droplets className="w-4 h-4 text-blue-500 dark:text-blue-400" /> Smart odporúčanie polievania
             </h3>
-            <p className="text-[11px] sm:text-xs text-sage-400 mt-0.5 sm:mt-1 leading-relaxed mobile-two-line">
+            <p className="text-[11px] sm:text-xs text-sage-400 dark:text-green-700 mt-0.5 sm:mt-1 leading-relaxed mobile-two-line">
               Odhad je postavený na priebehu vlhkosti, poslednom poliatí a reakcii senzora.
             </p>
           </div>
-          <span className="self-start rounded-lg bg-sage-50 px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-[11px] font-medium text-sage-500">
+          <span className="self-start rounded-lg bg-sage-50 dark:bg-green-950/40 px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-[11px] font-medium text-sage-500 dark:text-green-700">
             Živé insighty
           </span>
         </div>
@@ -1198,14 +1198,14 @@ export default function PlantDetail() {
               <div key={insight.key} className={`rounded-2xl border p-3 sm:p-4 mobile-compact-card ${tone.card}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[11px] sm:text-xs font-medium text-sage-500">{insight.label}</p>
-                    <p className="mt-0.5 sm:mt-1 text-[15px] sm:text-lg font-semibold text-green-900 leading-tight">{insight.value}</p>
+                    <p className="text-[11px] sm:text-xs font-medium text-sage-500 dark:text-green-700">{insight.label}</p>
+                    <p className="mt-0.5 sm:mt-1 text-[15px] sm:text-lg font-semibold text-green-900 dark:text-green-100 leading-tight">{insight.value}</p>
                   </div>
                   <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 ${tone.iconWrap}`}>
                     <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${tone.icon}`} />
                   </div>
                 </div>
-                <p className="mt-2 sm:mt-3 text-[11px] sm:text-xs text-sage-500 leading-relaxed mobile-two-line">{insight.description}</p>
+                <p className="mt-2 sm:mt-3 text-[11px] sm:text-xs text-sage-500 dark:text-green-700 leading-relaxed mobile-two-line">{insight.description}</p>
               </div>
             );
           })}
@@ -1226,41 +1226,41 @@ export default function PlantDetail() {
               </GaugeRing>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold text-green-900 inline-flex items-center gap-2 leading-tight text-[15px] sm:text-base">
-                    <Brain className="w-4 h-4 text-green-500 shrink-0" />
+                  <h3 className="font-semibold text-green-900 dark:text-green-100 inline-flex items-center gap-2 leading-tight text-[15px] sm:text-base">
+                    <Brain className="w-4 h-4 text-green-500 dark:text-green-500 shrink-0" />
                     <span>AI Analýza</span>
                   </h3>
-                  {aiSuccess ? <CheckCircle className="w-4 h-4 text-green-500 shrink-0" /> : <XCircle className="w-4 h-4 text-red-400 shrink-0" />}
+                  {aiSuccess ? <CheckCircle className="w-4 h-4 text-green-500 dark:text-green-500 shrink-0" /> : <XCircle className="w-4 h-4 text-red-400 dark:text-red-500 shrink-0" />}
                 </div>
-                <div className="mt-0.5 sm:mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-sage-400">
+                <div className="mt-0.5 sm:mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-sage-400 dark:text-green-700">
                   <span className="truncate max-w-full">{aiProvider}</span>
                   {aiSuccess ? (
-                    <span className="inline-flex px-1.5 py-0.5 rounded bg-green-50 text-green-600 text-[10px] font-semibold">OK</span>
+                    <span className="inline-flex px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-950/40 text-green-600 dark:text-green-500 text-[10px] font-semibold">OK</span>
                   ) : (
-                    <span className="inline-flex px-1.5 py-0.5 rounded bg-red-50 text-red-500 text-[10px] font-semibold">OFFLINE</span>
+                    <span className="inline-flex px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-950/20 text-red-500 dark:text-red-400 text-[10px] font-semibold">OFFLINE</span>
                   )}
                 </div>
               </div>
             </div>
             {analysis.watering_needed && (
-              <span className="self-start sm:ml-auto px-2.5 sm:px-3 py-1 rounded-lg bg-blue-50 text-blue-600 text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1">
+              <span className="self-start sm:ml-auto px-2.5 sm:px-3 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1">
                 <Droplet className="w-3 h-3 shrink-0" /> Treba poliať
               </span>
             )}
           </div>
 
-          <p className="text-[13px] sm:text-sm text-sage-600 mb-3 sm:mb-4 leading-relaxed">{analysis.summary}</p>
+          <p className="text-[13px] sm:text-sm text-sage-600 dark:text-green-700 mb-3 sm:mb-4 leading-relaxed">{analysis.summary}</p>
 
           {analysis.recommendations?.length > 0 && (
             <div className="space-y-2">
               {analysis.recommendations.map((rec, i) => (
-                <div key={i} className="flex items-start gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-xl bg-sage-50">
+                <div key={i} className="flex items-start gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-xl bg-sage-50 dark:bg-green-950/40">
                   <span className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
-                    rec.priority === 'high' ? 'bg-red-400' : rec.priority === 'medium' ? 'bg-amber-400' : 'bg-green-400'
+                    rec.priority === 'high' ? 'bg-red-400 dark:bg-red-500' : rec.priority === 'medium' ? 'bg-amber-400 dark:bg-amber-500' : 'bg-green-400 dark:bg-green-500'
                   }`} />
                   <div className="min-w-0">
-                    <p className="text-[13px] sm:text-sm font-medium text-green-900">{rec.action}</p>
-                    <p className="text-[11px] sm:text-xs text-sage-500 mt-0.5 leading-relaxed mobile-two-line">{rec.reason}</p>
+                    <p className="text-[13px] sm:text-sm font-medium text-green-900 dark:text-green-100">{rec.action}</p>
+                    <p className="text-[11px] sm:text-xs text-sage-500 dark:text-green-700 mt-0.5 leading-relaxed mobile-two-line">{rec.reason}</p>
                   </div>
                 </div>
               ))}
@@ -1271,14 +1271,14 @@ export default function PlantDetail() {
 
       {waterLog.length > 0 && (
         <div className="card p-4 sm:p-5 section-reveal stagger-6 mobile-compact-card">
-          <h3 className="font-semibold text-green-900 flex items-center gap-2 mb-3 text-[15px] sm:text-base">
-            <Clock className="w-4 h-4 text-sage-400" /> História polievania
+          <h3 className="font-semibold text-green-900 dark:text-green-100 flex items-center gap-2 mb-3 text-[15px] sm:text-base">
+            <Clock className="w-4 h-4 text-sage-400 dark:text-green-700" /> História polievania
           </h3>
           <div className="space-y-2">
             {waterLog.slice(0, 5).map((w, i) => (
-              <div key={i} className="flex items-center justify-between text-[13px] sm:text-sm px-3 py-2 rounded-xl bg-sage-50 gap-3">
-                <span className="text-green-900 min-w-0">{new Date(w.created_at).toLocaleString('sk')}</span>
-                <span className="text-sage-400 text-right">{w.amount_ml ? `${w.amount_ml} ml` : ''} {w.notes || ''}</span>
+              <div key={i} className="flex items-center justify-between text-[13px] sm:text-sm px-3 py-2 rounded-xl bg-sage-50 dark:bg-green-950/40 gap-3">
+                <span className="text-green-900 dark:text-green-100 min-w-0">{new Date(w.created_at).toLocaleString('sk')}</span>
+                <span className="text-sage-400 dark:text-green-700 text-right">{w.amount_ml ? `${w.amount_ml} ml` : ''} {w.notes || ''}</span>
               </div>
             ))}
           </div>
@@ -1299,17 +1299,17 @@ export default function PlantDetail() {
 
 function DeviceChip({ deviceId, status }) {
   const isOnline = status?.isOnline;
-  const dotClass = isOnline ? 'bg-green-500' : 'bg-red-400';
-  const labelClass = isOnline ? 'text-green-600' : 'text-red-500';
+  const dotClass = isOnline ? 'bg-green-500 dark:bg-green-500' : 'bg-red-400 dark:bg-red-500';
+  const labelClass = isOnline ? 'text-green-600 dark:text-green-500' : 'text-red-500 dark:text-red-400';
   const label = isOnline ? 'Online' : 'Offline';
 
   return (
-    <div className="hidden md:flex items-center gap-2 rounded-2xl border border-sage-100 bg-white px-3 py-2 min-w-0">
-      <span className="truncate text-xs text-sage-500">{deviceId || 'Bez zariadenia'}</span>
+    <div className="hidden md:flex items-center gap-2 rounded-2xl border border-sage-100 dark:border-green-900/20 bg-white dark:bg-green-950/50 px-3 py-2 min-w-0">
+      <span className="truncate text-xs text-sage-500 dark:text-green-700">{deviceId || 'Bez zariadenia'}</span>
       <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${labelClass}`}>
         <span className="relative flex h-2 w-2">
           {isOnline && (
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 dark:bg-green-500 opacity-75" />
           )}
           <span className={`relative inline-flex rounded-full h-2 w-2 ${dotClass}`} />
         </span>
@@ -1322,8 +1322,8 @@ function DeviceChip({ deviceId, status }) {
 function MobileStatusBadge({ status }) {
   const isOnline = status?.isOnline;
   return (
-    <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${isOnline ? 'text-green-600' : 'text-red-500'}`}>
-      <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isOnline ? 'bg-green-500' : 'bg-red-400'}`} />
+    <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${isOnline ? 'text-green-600 dark:text-green-500' : 'text-red-500 dark:text-red-400'}`}>
+      <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isOnline ? 'bg-green-500 dark:bg-green-500' : 'bg-red-400 dark:bg-red-500'}`} />
       {isOnline ? 'Online' : 'Offline'}
     </span>
   );

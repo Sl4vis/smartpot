@@ -1,10 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'monospace'],
       },
       colors: {
         sage: {
@@ -23,7 +25,7 @@ export default {
       borderRadius: {
         '2xl': '1rem',
         '3xl': '1.25rem',
-      }
+      },
     },
   },
   plugins: [],

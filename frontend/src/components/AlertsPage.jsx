@@ -83,17 +83,17 @@ const icons = {
 };
 
 const styles = {
-  warning: { bg: 'bg-amber-50', icon: 'text-amber-500', border: 'border-amber-100' },
-  critical: { bg: 'bg-red-50', icon: 'text-red-500', border: 'border-red-100' },
-  info: { bg: 'bg-blue-50', icon: 'text-blue-500', border: 'border-blue-100' }
+  warning: { bg: 'bg-amber-50 dark:bg-amber-950/20', icon: 'text-amber-500 dark:text-amber-400', border: 'border-amber-100 dark:border-amber-900/20' },
+  critical: { bg: 'bg-red-50 dark:bg-red-950/20', icon: 'text-red-500 dark:text-red-400', border: 'border-red-100 dark:border-red-900/20' },
+  info: { bg: 'bg-blue-50 dark:bg-blue-950/20', icon: 'text-blue-500 dark:text-blue-400', border: 'border-blue-100 dark:border-blue-900/20' }
 };
 
 const CATEGORY_META = {
-  soil: { label: 'Pôda', icon: Droplets, tint: 'bg-blue-50 text-blue-600 border-blue-100' },
-  light: { label: 'Svetlo', icon: Sun, tint: 'bg-amber-50 text-amber-600 border-amber-100' },
-  temperature: { label: 'Teplota', icon: Thermometer, tint: 'bg-red-50 text-red-600 border-red-100' },
-  air: { label: 'Vzduch', icon: Wind, tint: 'bg-violet-50 text-violet-600 border-violet-100' },
-  other: { label: 'Ostatné', icon: AlertTriangle, tint: 'bg-sage-50 text-sage-600 border-sage-100' }
+  soil: { label: 'Pôda', icon: Droplets, tint: 'bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/20' },
+  light: { label: 'Svetlo', icon: Sun, tint: 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/20' },
+  temperature: { label: 'Teplota', icon: Thermometer, tint: 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border-red-100 dark:border-red-900/20' },
+  air: { label: 'Vzduch', icon: Wind, tint: 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 border-violet-100 dark:border-violet-900/20' },
+  other: { label: 'Ostatné', icon: AlertTriangle, tint: 'bg-sage-50 dark:bg-green-950/40 text-sage-600 dark:text-green-700 border-sage-100 dark:border-green-900/20' }
 };
 
 const CATEGORY_ORDER = ['soil', 'light', 'temperature', 'air', 'other'];
@@ -371,8 +371,8 @@ export default function AlertsPage() {
     <div className="space-y-5 page-shell">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-green-900">Upozornenia</h1>
-          <p className="text-sm text-sage-500 mt-1">
+          <h1 className="text-2xl font-bold text-green-900 dark:text-green-100">Upozornenia</h1>
+          <p className="text-sm text-sage-500 dark:text-green-700 mt-1">
             {unread > 0 ? `${unread} neprečítaných` : 'Všetky upozornenia sú prečítané'}
           </p>
         </div>
@@ -396,24 +396,24 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      <div className="hidden sm:flex items-center gap-2 text-xs text-sage-500 px-1">
+      <div className="hidden sm:flex items-center gap-2 text-xs text-sage-500 dark:text-green-700 px-1">
         {notificationsEnabled && hasPushSubscription ? (
-          <Bell className="w-3.5 h-3.5 text-green-600" />
+          <Bell className="w-3.5 h-3.5 text-green-600 dark:text-green-500" />
         ) : (
-          <BellOff className="w-3.5 h-3.5 text-sage-400" />
+          <BellOff className="w-3.5 h-3.5 text-sage-400 dark:text-green-700" />
         )}
         <span>{compactNotificationHint}</span>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-2 border-green-200 border-t-green-500 rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-green-200 dark:border-green-800/30 border-t-green-500 rounded-full animate-spin" />
         </div>
       ) : alerts.length === 0 ? (
         <div className="card p-12 text-center">
-          <CheckCheck className="w-10 h-10 mx-auto mb-3 text-green-400" />
-          <h2 className="text-lg font-semibold text-green-900 mb-1">Žiadne upozornenia</h2>
-          <p className="text-sm text-sage-400">Všetky rastliny sú v poriadku.</p>
+          <CheckCheck className="w-10 h-10 mx-auto mb-3 text-green-500 dark:text-green-500" />
+          <h2 className="text-lg font-semibold text-green-900 dark:text-green-100 mb-1">Žiadne upozornenia</h2>
+          <p className="text-sm text-sage-400 dark:text-green-700">Všetky rastliny sú v poriadku.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -429,20 +429,20 @@ export default function AlertsPage() {
                   className="w-full text-left flex items-center justify-between gap-3"
                 >
                   <div className="min-w-0 flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-green-50 flex items-center justify-center flex-shrink-0 text-2xl">
+                    <div className="w-11 h-11 rounded-2xl bg-green-50 dark:bg-green-950/40 flex items-center justify-center flex-shrink-0 text-2xl">
                       <span role="img" aria-label={group.title}>{emoji}</span>
                     </div>
 
                     <div className="min-w-0 flex items-center gap-2 flex-wrap">
-                      <h2 className="text-base font-semibold text-green-900 truncate">{group.title}</h2>
+                      <h2 className="text-base font-semibold text-green-900 dark:text-green-100 truncate">{group.title}</h2>
 
                       {group.unreadCount > 0 ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-[11px] font-semibold whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 text-[11px] font-semibold whitespace-nowrap">
                           <Bell className="w-3.5 h-3.5" />
                           {group.unreadCount}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-[11px] font-semibold whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-500 text-[11px] font-semibold whitespace-nowrap">
                           <Bell className="w-3.5 h-3.5" />
                           Všetko prečítané
                         </span>
@@ -450,7 +450,7 @@ export default function AlertsPage() {
                     </div>
                   </div>
 
-                  <span className="w-10 h-10 rounded-xl bg-sage-50 text-sage-500 flex items-center justify-center flex-shrink-0">
+                  <span className="w-10 h-10 rounded-xl bg-sage-50 dark:bg-green-950/40 text-sage-500 dark:text-green-700 flex items-center justify-center flex-shrink-0">
                     {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
                   </span>
                 </button>
@@ -463,11 +463,11 @@ export default function AlertsPage() {
                       const categoryCollapsed = Boolean(collapsedCategories[`${group.id}:${category.key}`]);
 
                       return (
-                        <div key={category.key} className="rounded-2xl border border-sage-100 overflow-hidden bg-white">
+                        <div key={category.key} className="rounded-2xl border border-sage-100 dark:border-green-900/20 overflow-hidden bg-white dark:bg-green-950/50">
                           <button
                             type="button"
                             onClick={() => toggleCategory(group.id, category.key)}
-                            className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-sage-50/50 transition-colors"
+                            className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-sage-50 dark:hover:bg-green-950/40 dark:bg-green-950/40/50 dark:bg-green-950/30 transition-colors"
                           >
                             <div className="min-w-0 flex items-center gap-3">
                               <div className={`w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0 ${meta.tint}`}>
@@ -475,12 +475,12 @@ export default function AlertsPage() {
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-sm font-semibold text-green-900">{meta.label}</span>
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sage-50 text-sage-500 text-[11px] font-semibold whitespace-nowrap">
+                                  <span className="text-sm font-semibold text-green-900 dark:text-green-100">{meta.label}</span>
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sage-50 dark:bg-green-950/40 text-sage-500 dark:text-green-700 text-[11px] font-semibold whitespace-nowrap">
                                     {category.alerts.length}
                                   </span>
                                   {category.unreadCount > 0 && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px] font-semibold whitespace-nowrap">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 text-[11px] font-semibold whitespace-nowrap">
                                       <Bell className="w-3 h-3" />
                                       {category.unreadCount}
                                     </span>
@@ -489,7 +489,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
 
-                            <span className="w-9 h-9 rounded-xl bg-sage-50 flex items-center justify-center text-sage-500 flex-shrink-0">
+                            <span className="w-9 h-9 rounded-xl bg-sage-50 dark:bg-green-950/40 flex items-center justify-center text-sage-500 dark:text-green-700 flex-shrink-0">
                               {categoryCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
                             </span>
                           </button>
@@ -503,7 +503,7 @@ export default function AlertsPage() {
                                 return (
                                   <div
                                     key={alert.id}
-                                    className={`rounded-2xl border p-4 flex items-start gap-4 transition-all ${theme.border} ${alert.read ? 'bg-sage-50/60 opacity-80' : 'bg-white shadow-sm'}`}
+                                    className={`rounded-2xl border p-4 flex items-start gap-4 transition-all ${theme.border} ${alert.read ? 'bg-sage-50 dark:bg-green-950/40/60 dark:bg-green-950/30 opacity-80' : 'bg-white dark:bg-green-950/50 shadow-sm'}`}
                                   >
                                     <div className={`p-2.5 rounded-xl ${theme.bg}`}>
                                       <AlertIcon className={`w-4 h-4 ${theme.icon}`} />
@@ -512,24 +512,24 @@ export default function AlertsPage() {
                                     <div className="flex-1 min-w-0">
                                       <div className="flex flex-wrap items-center gap-2 mb-1.5">
                                         {!alert.read && (
-                                          <span className="inline-flex px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[11px] font-semibold">
+                                          <span className="inline-flex px-2 py-0.5 rounded-full bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-500 text-[11px] font-semibold">
                                             Nové
                                           </span>
                                         )}
-                                        <span className="text-[11px] text-sage-400 font-mono">{alert.device_id}</span>
+                                        <span className="text-[11px] text-sage-400 dark:text-green-700 font-mono">{alert.device_id}</span>
                                       </div>
 
-                                      <p className="text-sm text-green-900">{alert.message}</p>
-                                      <p className="text-xs text-sage-400 mt-1.5">{new Date(alert.created_at).toLocaleString('sk')}</p>
+                                      <p className="text-sm text-green-900 dark:text-green-100">{alert.message}</p>
+                                      <p className="text-xs text-sage-400 dark:text-green-700 mt-1.5">{new Date(alert.created_at).toLocaleString('sk')}</p>
                                     </div>
 
                                     {!alert.read && (
                                       <button
                                         onClick={() => handleMarkRead(alert.id)}
-                                        className="p-2 rounded-xl hover:bg-green-50 transition-colors flex-shrink-0"
+                                        className="p-2 rounded-xl hover:bg-green-50 dark:hover:bg-green-900/30 dark:bg-green-950/40 transition-colors flex-shrink-0"
                                         title="Označiť ako prečítané"
                                       >
-                                        <Check className="w-4 h-4 text-sage-400" />
+                                        <Check className="w-4 h-4 text-sage-400 dark:text-green-700" />
                                       </button>
                                     )}
                                   </div>
@@ -565,7 +565,7 @@ function NotificationToggleButton({ enabled, busy, unsupported, onClick }) {
       disabled={busy || unsupported}
       title={label}
       aria-label={label}
-      className={`inline-flex items-center justify-center w-11 h-11 rounded-2xl border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${enabled ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100' : 'border-sage-200 bg-white text-sage-500 hover:bg-sage-50'}`}
+      className={`inline-flex items-center justify-center w-11 h-11 rounded-2xl border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${enabled ? 'border-green-200 dark:border-green-800/30 bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-500 hover:bg-green-100 dark:bg-green-900/30' : 'border-sage-200 dark:border-green-900/30 bg-white dark:bg-green-950/50 text-sage-500 dark:text-green-700 hover:bg-sage-50 dark:hover:bg-green-950/40 dark:bg-green-950/40'}`}
     >
       {enabled ? <Bell className={`w-4 h-4 ${busy ? 'animate-pulse' : ''}`} /> : <BellOff className={`w-4 h-4 ${busy ? 'animate-pulse' : ''}`} />}
     </button>

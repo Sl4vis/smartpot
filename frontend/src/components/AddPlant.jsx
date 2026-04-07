@@ -86,44 +86,44 @@ export default function AddPlant() {
   return (
     <div className="max-w-lg mx-auto space-y-5 page-shell">
       <div className="flex items-center gap-3">
-        <Link to="/" className="p-2 -ml-2 rounded-xl hover:bg-green-50 transition-colors">
-          <ArrowLeft className="w-5 h-5 text-sage-500" />
+        <Link to="/" className="p-2 -ml-2 rounded-xl hover:bg-green-50 dark:hover:bg-green-900/30 dark:bg-green-950/40 transition-colors">
+          <ArrowLeft className="w-5 h-5 text-sage-500 dark:text-green-700" />
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-green-900">Pridať rastlinu</h1>
-          <p className="text-sm text-sage-500">Pripoj ESP32 senzor</p>
+          <h1 className="text-xl font-bold text-green-900 dark:text-green-100">Pridať rastlinu</h1>
+          <p className="text-sm text-sage-500 dark:text-green-700">Pripoj ESP32 senzor</p>
         </div>
       </div>
 
       {error && (
-        <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600">{error}</div>
+        <div className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/20 text-sm text-red-600 dark:text-red-400">{error}</div>
       )}
 
       <div className="card p-6 space-y-5">
         {/* Názov */}
         <div>
-          <label className="block text-sm font-medium text-green-900 mb-1.5">Názov rastliny *</label>
+          <label className="block text-sm font-medium text-green-900 dark:text-green-100 mb-1.5">Názov rastliny *</label>
           <input name="name" value={form.name} onChange={set} placeholder="napr. Moja Monstera" className="input-field" />
         </div>
 
         {/* Druh + Umiestnenie */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-green-900 mb-1.5">Druh *</label>
+            <label className="block text-sm font-medium text-green-900 dark:text-green-100 mb-1.5">Druh *</label>
             <input name="species" value={form.species} onChange={set} placeholder="Monstera deliciosa" className="input-field" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-green-900 mb-1.5">Umiestnenie</label>
+            <label className="block text-sm font-medium text-green-900 dark:text-green-100 mb-1.5">Umiestnenie</label>
             <input name="location" value={form.location} onChange={set} placeholder="Obývačka" className="input-field" />
           </div>
         </div>
 
         {/* Zariadenie - dropdown */}
         <div>
-          <label className="block text-sm font-medium text-green-900 mb-1.5">IoT zariadenie (ESP32) *</label>
+          <label className="block text-sm font-medium text-green-900 dark:text-green-100 mb-1.5">IoT zariadenie (ESP32) *</label>
 
           {devicesLoading ? (
-            <div className="input-field flex items-center gap-2 text-sage-400">
+            <div className="input-field flex items-center gap-2 text-sage-400 dark:text-green-700">
               <Loader2 className="w-4 h-4 animate-spin" /> Načítavam zariadenia...
             </div>
           ) : hasAny ? (
@@ -157,17 +157,17 @@ export default function AddPlant() {
               <div className="flex items-center gap-2 text-xs">
                 {hasAvailable ? (
                   <>
-                    <Wifi className="w-3.5 h-3.5 text-green-500" />
-                    <span className="text-green-600">{devices.available.length} voľných zariadení</span>
+                    <Wifi className="w-3.5 h-3.5 text-green-500 dark:text-green-500" />
+                    <span className="text-green-600 dark:text-green-500">{devices.available.length} voľných zariadení</span>
                   </>
                 ) : (
                   <>
-                    <WifiOff className="w-3.5 h-3.5 text-amber-500" />
-                    <span className="text-amber-600">Žiadne voľné zariadenia</span>
+                    <WifiOff className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+                    <span className="text-amber-600 dark:text-amber-400">Žiadne voľné zariadenia</span>
                   </>
                 )}
                 {devices.assigned?.length > 0 && (
-                  <span className="text-sage-400">· {devices.assigned.length} obsadených</span>
+                  <span className="text-sage-400 dark:text-green-700">· {devices.assigned.length} obsadených</span>
                 )}
               </div>
             </div>
@@ -182,25 +182,25 @@ export default function AddPlant() {
                 className="input-field font-mono"
               />
               <div className="flex items-center gap-2 text-xs">
-                <WifiOff className="w-3.5 h-3.5 text-sage-400" />
-                <span className="text-sage-400">Žiadne zariadenia nenájdené — zadaj ID manuálne</span>
+                <WifiOff className="w-3.5 h-3.5 text-sage-400 dark:text-green-700" />
+                <span className="text-sage-400 dark:text-green-700">Žiadne zariadenia nenájdené — zadaj ID manuálne</span>
               </div>
             </div>
           )}
 
-          <p className="text-xs text-sage-400 mt-1.5">
+          <p className="text-xs text-sage-400 dark:text-green-700 mt-1.5">
             Zariadenie sa objaví v zozname keď ESP32 pošle prvé dáta cez Azure IoT Hub
           </p>
         </div>
 
-        <hr className="border-sage-100" />
+        <hr className="border-sage-100 dark:border-green-900/20" />
 
         {/* AI suggest */}
         <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-sage-500">Prahové hodnoty</p>
+          <p className="text-sm font-medium text-sage-500 dark:text-green-700">Prahové hodnoty</p>
           <button onClick={handleAISuggest} disabled={aiLoading || !form.species}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all
-              bg-purple-50 text-purple-600 hover:bg-purple-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              bg-purple-50 dark:bg-purple-950/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:bg-purple-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
             title={!form.species ? 'Najprv vyplň druh rastliny' : 'AI doplní optimálne hodnoty'}>
             {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
             {aiLoading ? 'Analyzujem...' : 'AI doplnenie'}
@@ -208,7 +208,7 @@ export default function AddPlant() {
         </div>
 
         {aiDescription && (
-          <div className="px-3 py-2.5 rounded-xl bg-purple-50 text-xs text-purple-700 leading-relaxed flex items-start gap-2">
+          <div className="px-3 py-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/20 text-xs text-purple-700 dark:text-purple-400 leading-relaxed flex items-start gap-2">
             <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
             <span>
               {form.emoji && <span className="text-base mr-1">{form.emoji}</span>}
@@ -220,25 +220,25 @@ export default function AddPlant() {
         {/* Prahy */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-sage-400 mb-1">Min. vlhkosť pôdy (%)</label>
+            <label className="block text-xs text-sage-400 dark:text-green-700 mb-1">Min. vlhkosť pôdy (%)</label>
             <input name="min_soil_moisture" type="number" value={form.min_soil_moisture} onChange={set} className="input-field" />
           </div>
           <div>
-            <label className="block text-xs text-sage-400 mb-1">Max. vlhkosť pôdy (%)</label>
+            <label className="block text-xs text-sage-400 dark:text-green-700 mb-1">Max. vlhkosť pôdy (%)</label>
             <input name="max_soil_moisture" type="number" value={form.max_soil_moisture} onChange={set} className="input-field" />
           </div>
           <div>
-            <label className="block text-xs text-sage-400 mb-1">Min. teplota (°C)</label>
+            <label className="block text-xs text-sage-400 dark:text-green-700 mb-1">Min. teplota (°C)</label>
             <input name="min_temperature" type="number" value={form.min_temperature} onChange={set} className="input-field" />
           </div>
           <div>
-            <label className="block text-xs text-sage-400 mb-1">Max. teplota (°C)</label>
+            <label className="block text-xs text-sage-400 dark:text-green-700 mb-1">Max. teplota (°C)</label>
             <input name="max_temperature" type="number" value={form.max_temperature} onChange={set} className="input-field" />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs text-sage-400 mb-1">Min. svetlo (lux)</label>
+          <label className="block text-xs text-sage-400 dark:text-green-700 mb-1">Min. svetlo (lux)</label>
           <input name="min_light" type="number" value={form.min_light} onChange={set} className="input-field" />
         </div>
 
