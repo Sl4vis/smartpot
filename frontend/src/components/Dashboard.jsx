@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { getDashboardOverview } from '../services/api';
 import GaugeRing from './GaugeRing';
+import AddPlantModal from './AddPlantModal';
 import { getDeviceStatus } from '../utils/deviceStatus';
 import { getPlantEmoji } from '../utils/plantEmoji';
 
@@ -41,6 +42,8 @@ export default function Dashboard() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [demo, setDemo] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -80,7 +83,7 @@ export default function Dashboard() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, []);
+  }, [refreshKey]);
 
   if (loading) {
     return (
@@ -97,10 +100,12 @@ export default function Dashboard() {
           <h1 className="text-2xl sm:text-3xl font-bold text-green-900 dark:text-green-100">Moje rastliny</h1>
           <p className="text-sm text-sage-500 dark:text-green-700 mt-1">{data.length} monitorovaných</p>
         </div>
-        <Link to="/add" className="btn-primary text-xs sm:text-sm">
+        <button onClick={() => setShowAddModal(true)} className="btn-primary text-xs sm:text-sm">
           <Plus className="w-4 h-4" /> Pridať
-        </Link>
+        </button>
       </div>
+
+      <AddPlantModal open={showAddModal} onClose={() => { setShowAddModal(false); setRefreshKey(k => k + 1); }} />
 
       {demo && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/20 text-sm text-amber-700 dark:text-amber-400">

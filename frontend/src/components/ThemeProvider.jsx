@@ -14,6 +14,8 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     const root = document.documentElement;
+    // Add transition class for smooth color change
+    root.style.transition = 'background-color 0.5s ease, color 0.5s ease';
     if (dark) {
       root.classList.add('dark');
     } else {
