@@ -6,7 +6,7 @@ import {
   Sun,
   Wind,
   Plus,
-  AlertTriangle,
+  Leaf,
   ChevronRight,
 } from 'lucide-react';
 import { getDashboardOverview } from '../services/api';
@@ -15,33 +15,11 @@ import AddPlantModal from './AddPlantModal';
 import { getDeviceStatus } from '../utils/deviceStatus';
 import { getPlantEmoji } from '../utils/plantEmoji';
 
-const DEMO = [
-  {
-    plant: { id: 'demo-1', name: 'Monstera', species: 'Monstera deliciosa', device_id: 'esp32-001', location: 'Obývačka', min_soil_moisture: 40, min_light: 300 },
-    latest_reading: { soil_moisture: 55, temperature: 22.4, humidity: 58, light_lux: 850, created_at: new Date().toISOString() },
-    latest_analysis: { health_score: 85, status: 'ok', summary: 'Rastlina je v poriadku.' },
-    unread_alerts: 0
-  },
-  {
-    plant: { id: 'demo-2', name: 'Fikus', species: 'Ficus benjamina', device_id: 'esp32-002', location: 'Spálňa', min_soil_moisture: 35, min_light: 400 },
-    latest_reading: { soil_moisture: 28, temperature: 20.1, humidity: 45, light_lux: 320, created_at: new Date(Date.now() - 25 * 60000).toISOString() },
-    latest_analysis: { health_score: 42, status: 'warning', summary: 'Treba poliať, pôda je suchá.' },
-    unread_alerts: 2
-  },
-  {
-    plant: { id: 'demo-3', name: 'Kaktus', species: 'Cactus', device_id: 'esp32-003', location: 'Kuchyňa', min_soil_moisture: 20, min_light: 500 },
-    latest_reading: null,
-    latest_analysis: null,
-    unread_alerts: 0
-  }
-];
-
 const REFRESH_INTERVAL_MS = 20000;
 
 export default function Dashboard() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [demo, setDemo] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -52,18 +30,10 @@ export default function Dashboard() {
       try {
         const d = await getDashboardOverview();
         if (!mounted) return;
-
-        if (d?.length > 0) {
-          setData(d);
-          setDemo(false);
-        } else if (!silent) {
-          setData(DEMO);
-          setDemo(true);
-        }
+        setData(d || []);
       } catch {
         if (!mounted || silent) return;
-        setData(DEMO);
-        setDemo(true);
+        setData([]);
       } finally {
         if (mounted && !silent) setLoading(false);
       }
@@ -107,18 +77,27 @@ export default function Dashboard() {
 
       <AddPlantModal open={showAddModal} onClose={() => { setShowAddModal(false); setRefreshKey(k => k + 1); }} />
 
-      {demo && (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/20 text-sm text-amber-700 dark:text-amber-400">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          Demo režim — spusti backend pre reálne dáta
+      {data.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 px-4">
+          <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-6"
+            style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.1), rgba(22,163,74,0.15))' }}>
+            <Leaf className="w-10 h-10 text-green-500/60" />
+          </div>
+          <h2 className="text-lg font-bold text-green-900 dark:text-green-100 mb-2">Zatiaľ žiadne rastliny</h2>
+          <p className="text-sm text-sage-400 dark:text-green-700 text-center max-w-sm mb-6">
+            Pridaj svoju prvú rastlinu a pripoj ESP32 senzor pre sledovanie v reálnom čase.
+          </p>
+          <button onClick={() => setShowAddModal(true)} className="btn-primary">
+            <Plus className="w-4 h-4" /> Pridať prvú rastlinu
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {data.map((item, i) => (
+            <PlantCard key={item.plant.id} data={item} i={i} />
+          ))}
         </div>
       )}
-
-      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {data.map((item, i) => (
-          <PlantCard key={item.plant.id} data={item} i={i} />
-        ))}
-      </div>
     </div>
   );
 }
