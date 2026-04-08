@@ -1,7 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Save, Loader2, Sparkles, Wifi, WifiOff, Check } from 'lucide-react';
 import { createPlant, suggestThresholds, getAvailableDevices } from '../services/api';
+
+const INITIAL_FORM = {
+  name: '', species: '', device_id: '', location: '', emoji: '',
+  min_soil_moisture: 30, max_soil_moisture: 80,
+  min_temperature: 15, max_temperature: 30, min_light: 200
+};
 
 export default function AddPlantModal({ open, onClose }) {
   const navigate = useNavigate();
@@ -13,23 +19,25 @@ export default function AddPlantModal({ open, onClose }) {
   const [devices, setDevices] = useState({ available: [], assigned: [] });
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [closing, setClosing] = useState(false);
+  const [form, setForm] = useState({ ...INITIAL_FORM });
 
-  const [form, setForm] = useState({
-    name: '', species: '', device_id: '', location: '', emoji: '',
-    min_soil_moisture: 30, max_soil_moisture: 80,
-    min_temperature: 15, max_temperature: 30, min_light: 200
-  });
+  const resetForm = useCallback(() => {
+    setForm({ ...INITIAL_FORM });
+    setSaving(false);
+    setAiLoading(false);
+    setAiDescription('');
+    setError('');
+    setClosing(false);
+  }, []);
 
   useEffect(() => {
     if (open) {
+      resetForm();
       loadDevices();
-      setError('');
-      setAiDescription('');
-      setClosing(false);
       document.body.style.overflow = 'hidden';
     }
     return () => { document.body.style.overflow = ''; };
-  }, [open]);
+  }, [open, resetForm]);
 
   function handleClose() {
     setClosing(true);
@@ -48,7 +56,7 @@ export default function AddPlantModal({ open, onClose }) {
     try {
       const data = await getAvailableDevices();
       setDevices(data);
-      if (data.available?.length > 0 && !form.device_id) {
+      if (data.available?.length > 0) {
         setForm(f => ({ ...f, device_id: data.available[0] }));
       }
     } catch {
@@ -82,14 +90,15 @@ export default function AddPlantModal({ open, onClose }) {
   }
 
   async function submit() {
-    if (!form.name || !form.device_id) { setError('Názov a zariadenie sú povinné.'); return; }
+    if (!form.name.trim()) { setError('Názov rastliny je povinný.'); return; }
+    if (!form.device_id) { setError('Vyber IoT zariadenie.'); return; }
     setSaving(true); setError('');
     try {
       const p = await createPlant(form);
-      onClose();
+      handleClose();
       navigate(`/plant/${p.id}`);
     } catch (err) {
-      const msg = err?.response?.data?.error || 'Chyba — skontroluj či backend beží.';
+      const msg = err?.response?.data?.error || 'Chyba pri ukladaní — skontroluj či backend beží.';
       setError(msg);
       setSaving(false);
     }
@@ -133,7 +142,7 @@ export default function AddPlantModal({ open, onClose }) {
 
           <div>
             <label className="block text-sm font-medium text-green-900 dark:text-green-100 mb-1.5">Názov rastliny *</label>
-            <input name="name" value={form.name} onChange={set} placeholder="napr. Moja Monstera" className="input-field" />
+            <input name="name" value={form.name} onChange={set} placeholder="napr. Moja Monstera" className="input-field" autoFocus />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -157,6 +166,7 @@ export default function AddPlantModal({ open, onClose }) {
             ) : hasAny ? (
               <div className="space-y-2">
                 <select name="device_id" value={form.device_id} onChange={set} className="input-field cursor-pointer">
+                  {!form.device_id && <option value="">— Vyber zariadenie —</option>}
                   {hasAvailable && (
                     <optgroup label="Dostupné">
                       {devices.available.map(id => <option key={id} value={id}>{id}</option>)}
@@ -176,7 +186,10 @@ export default function AddPlantModal({ open, onClose }) {
                 </div>
               </div>
             ) : (
-              <input name="device_id" value={form.device_id} onChange={set} placeholder="esp32-001" className="input-field font-mono" />
+              <div className="space-y-2">
+                <input name="device_id" value={form.device_id} onChange={set} placeholder="esp32-001" className="input-field font-mono" />
+                <p className="text-xs text-sage-400 dark:text-green-700">Zadaj ID zariadenia manuálne — žiadne sa nenašli v systéme.</p>
+              </div>
             )}
           </div>
 
