@@ -6,8 +6,8 @@ import ThemeToggle from './ThemeToggle';
 import { useAuth } from './AuthProvider';
 
 const nav = [
-  { path: '/', icon: LayoutDashboard, label: 'Prehľad' },
-  { path: '/alerts', icon: Bell, label: 'Alerty' },
+  { path: '/', icon: LayoutDashboard, label: 'Prehľad', showLabel: true },
+  { path: '/alerts', icon: Bell, label: 'Alerty', showLabel: false },
 ];
 
 export default function Layout() {
@@ -52,17 +52,18 @@ export default function Layout() {
 
             <div className="flex items-center gap-2">
               <nav className="hidden sm:flex items-center gap-1">
-                {nav.map(({ path, icon: Icon, label }, index) => {
+                {nav.map(({ path, icon: Icon, label, showLabel }, index) => {
                   const active = location.pathname === path;
                   return (
                     <Link key={path} to={path} style={{ animationDelay: `${0.08 + index * 0.05}s` }}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 nav-item-animate hover-lift
+                      title={label}
+                      className={`flex items-center gap-2 ${showLabel ? 'px-4' : 'px-3'} py-2 rounded-xl text-sm font-medium transition-all duration-200 nav-item-animate hover-lift
                         ${active
                           ? 'bg-green-50 dark:bg-green-900/40 text-green-700 dark:text-green-400 dark:shadow-[0_0_8px_rgba(74,222,128,0.06)]'
                           : 'text-sage-600 dark:text-sage-400 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50/50 dark:hover:bg-green-900/30'
                         }`}>
                       <Icon className="w-4 h-4" />
-                      {label}
+                      {showLabel && label}
                     </Link>
                   );
                 })}
