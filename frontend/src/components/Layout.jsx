@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Leaf, LayoutDashboard, Bell, Menu, X } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Leaf, LayoutDashboard, Bell, Menu, X, LogOut, Settings } from 'lucide-react';
 import InteractiveBg from './InteractiveBg';
 import ThemeToggle from './ThemeToggle';
+import { useAuth } from './AuthProvider';
 
 const nav = [
   { path: '/', icon: LayoutDashboard, label: 'Prehľad' },
@@ -11,7 +12,27 @@ const nav = [
 
 export default function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setUserMenuOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  async function handleLogout() {
+    await signOut();
+    navigate('/auth');
+  }
+
+  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
+  const userInitials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
   return (
     <div className="min-h-screen relative isolate overflow-hidden transition-colors duration-300">
@@ -49,6 +70,44 @@ export default function Layout() {
 
               <ThemeToggle />
 
+              {/* User menu */}
+              <div className="relative" ref={menuRef}>
+                <button onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold
+                    bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400
+                    hover:bg-green-200 dark:hover:bg-green-800/50 transition-all active:scale-90">
+                  {userInitials}
+                </button>
+
+                {userMenuOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-56 rounded-xl overflow-hidden
+                    bg-white dark:bg-[#111] border border-sage-200/60 dark:border-green-900/30
+                    shadow-xl dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)]"
+                    style={{ animation: 'modalIn 0.2s ease-out' }}>
+
+                    <div className="px-4 py-3 border-b border-sage-100 dark:border-green-900/20">
+                      <p className="text-sm font-semibold text-green-900 dark:text-green-100 truncate">{userName}</p>
+                      <p className="text-xs text-sage-400 dark:text-green-700 truncate">{user?.email}</p>
+                    </div>
+
+                    <div className="p-1.5">
+                      <Link to="/settings" onClick={() => setUserMenuOpen(false)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium
+                          text-green-800 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/30 transition-all">
+                        <Settings className="w-4 h-4" />
+                        Nastavenia
+                      </Link>
+                      <button onClick={handleLogout}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium
+                          text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all">
+                        <LogOut className="w-4 h-4" />
+                        Odhlásiť sa
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button className="sm:hidden p-2 rounded-xl hover:bg-green-50 dark:hover:bg-green-900/40 transition-colors nav-item-animate stagger-2"
                 onClick={() => setOpen(!open)}>
                 {open
@@ -74,6 +133,16 @@ export default function Layout() {
                   </Link>
                 );
               })}
+              <Link to="/settings" onClick={() => setOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-sage-600 dark:text-sage-400 hover:bg-green-50/50 dark:hover:bg-green-900/30 transition-all nav-item-animate">
+                <Settings className="w-4 h-4" />
+                Nastavenia
+              </Link>
+              <button onClick={handleLogout}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all">
+                <LogOut className="w-4 h-4" />
+                Odhlásiť sa
+              </button>
             </nav>
           )}
         </div>
@@ -82,7 +151,6 @@ export default function Layout() {
       <main className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-8 pb-8 sm:pb-8">
         <Outlet />
       </main>
-
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { supabase } from './supabaseClient';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -7,6 +8,29 @@ const api = axios.create({
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' }
 });
+
+// Automaticky pridaj Supabase JWT token do kazdeho requestu
+api.interceptors.request.use(async (config) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  } catch {}
+  return config;
+});
+
+// Ak server vrati 401, presmeruj na login
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      supabase.auth.signOut();
+      window.location.href = '/auth';
+    }
+    return Promise.reject(error);
+  }
+);
 
 // ── Plants ──────────────────────────────────────
 export const getPlants = () => api.get('/plants').then(r => r.data.data);

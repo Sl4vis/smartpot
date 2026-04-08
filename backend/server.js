@@ -10,6 +10,7 @@ const plantRoutes = require('./routes/plants');
 const aiRoutes = require('./routes/ai');
 const dashboardRoutes = require('./routes/dashboard');
 const notificationRoutes = require('./routes/notifications');
+const { requireAuth, optionalAuth } = require('./middleware/auth');
 const { startIoTHubListener } = require('./services/azureIotService');
 const { startPushScheduler } = require('./services/pushNotificationService');
 
@@ -43,11 +44,11 @@ const iotLimiter = rateLimit({
 });
 
 // ── Routes ──────────────────────────────────────────────
-app.use('/api/sensors', iotLimiter, sensorRoutes);
-app.use('/api/plants', apiLimiter, plantRoutes);
-app.use('/api/ai', apiLimiter, aiRoutes);
-app.use('/api/dashboard', apiLimiter, dashboardRoutes);
-app.use('/api/notifications', apiLimiter, notificationRoutes);
+app.use('/api/sensors', iotLimiter, optionalAuth, sensorRoutes);      // optionalAuth pre /devices/available
+app.use('/api/plants', apiLimiter, requireAuth, plantRoutes);         // Auth povinný
+app.use('/api/ai', apiLimiter, requireAuth, aiRoutes);                // Auth povinný
+app.use('/api/dashboard', apiLimiter, requireAuth, dashboardRoutes);  // Auth povinný
+app.use('/api/notifications', apiLimiter, requireAuth, notificationRoutes); // Auth povinný
 
 app.get('/', (req, res) => {
   res.json({ message: 'Smart Plant Pot API beží' });

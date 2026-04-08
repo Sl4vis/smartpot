@@ -7,24 +7,32 @@ const { sendImmediatePushNotification } = require('../services/pushNotificationS
 
 const ALERT_COOLDOWN_MINUTES = Number(process.env.ALERT_COOLDOWN_MINUTES || 60);
 
-// GET /api/sensors/devices/available - Zariadenia ktoré posielajú dáta ale nemajú priradenú rastlinu
+// GET /api/sensors/devices/available - Zariadenia dostupne pre prihlasenho usera
 router.get('/devices/available', async (req, res) => {
   try {
     const currentPlantId = req.query.currentPlantId || null;
+    const userId = req.userId || null; // z optionalAuth
 
+    // Vsetky zariadenia co niekedy poslali data
     const { data: allDevices, error: e1 } = await supabase
       .from('sensor_readings')
       .select('device_id')
       .order('created_at', { ascending: false });
 
     if (e1) throw e1;
-
     const uniqueDevices = [...new Set((allDevices || []).map(d => d.device_id).filter(Boolean))];
 
-    const { data: plants, error: e2 } = await supabase
-      .from('plants')
-      .select('id, device_id');
+    // Zariadenia claimnute inymi usermi
+    let claimedByOthers = new Set();
+    try {
+      const { data: claims } = await supabase.from('user_devices').select('device_id, user_id');
+      claimedByOthers = new Set(
+        (claims || []).filter(c => userId && c.user_id !== userId).map(c => c.device_id)
+      );
+    } catch {}
 
+    // Zariadenia uz priradene k rastlinam
+    const { data: plants, error: e2 } = await supabase.from('plants').select('id, device_id');
     if (e2) throw e2;
 
     const currentPlant = currentPlantId
@@ -32,14 +40,12 @@ router.get('/devices/available', async (req, res) => {
       : null;
 
     const assignedIds = new Set(
-      (plants || [])
-        .filter(plant => plant.id !== currentPlantId)
-        .map(plant => plant.device_id)
-        .filter(Boolean)
+      (plants || []).filter(plant => plant.id !== currentPlantId).map(plant => plant.device_id).filter(Boolean)
     );
 
-    const available = uniqueDevices.filter(id => !assignedIds.has(id));
-    const assigned = uniqueDevices.filter(id => assignedIds.has(id));
+    // Available = nie je priradene k rastline AND nie je claimnute inym userom
+    const available = uniqueDevices.filter(id => !assignedIds.has(id) && !claimedByOthers.has(id));
+    const assigned = uniqueDevices.filter(id => assignedIds.has(id) || claimedByOthers.has(id));
 
     if (currentPlant?.device_id && !available.includes(currentPlant.device_id)) {
       available.unshift(currentPlant.device_id);
@@ -55,7 +61,7 @@ router.get('/devices/available', async (req, res) => {
     });
   } catch (err) {
     console.error('Devices error:', err.message);
-    res.status(500).json({ error: 'Chyba pri načítavaní zariadení' });
+    res.status(500).json({ error: 'Chyba pri nacitavani zariadeni' });
   }
 });
 
