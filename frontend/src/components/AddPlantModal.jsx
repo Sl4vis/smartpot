@@ -110,13 +110,14 @@ export default function AddPlantModal({ open, onClose }) {
 
   return (
     <div ref={overlayRef} onClick={handleOverlayClick}
-      className={`fixed inset-0 z-[100] flex items-start sm:items-center justify-center px-4 py-8 sm:py-12
+      className={`fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overscroll-contain p-4 sm:p-6
         transition-all duration-250
         ${closing ? 'bg-black/0' : 'bg-black/40 dark:bg-black/60 backdrop-blur-sm'}`}>
 
-      <div className={`relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl
+      <div className={`relative w-full max-w-lg my-auto rounded-2xl
         bg-white dark:bg-[#111] border border-sage-200/60 dark:border-green-900/30
         shadow-2xl dark:shadow-[0_24px_80px_rgba(0,0,0,0.5)]
+        max-h-[90vh] sm:max-h-[85vh] overflow-y-auto
         transition-all duration-250
         ${closing ? 'opacity-0 scale-95 translate-y-4' : 'opacity-100 scale-100 translate-y-0'}`}
         style={{ animation: closing ? 'none' : 'modalIn 0.3s cubic-bezier(0.22,1,0.36,1)' }}>
