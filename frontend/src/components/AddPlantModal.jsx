@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { X, Save, Loader2, Sparkles, Wifi, WifiOff, Check } from 'lucide-react';
 import { createPlant, suggestThresholds, getAvailableDevices } from '../services/api';
@@ -38,6 +39,14 @@ export default function AddPlantModal({ open, onClose }) {
     }
     return () => { document.body.style.overflow = ''; };
   }, [open, resetForm]);
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e) { if (e.key === 'Escape') handleClose(); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [open]);
 
   function handleClose() {
     setClosing(true);
@@ -108,11 +117,13 @@ export default function AddPlantModal({ open, onClose }) {
   const hasAvailable = devices.available?.length > 0;
   const hasAny = hasAvailable || devices.assigned?.length > 0;
 
-  return (
+  // Portal: renderuj priamo do document.body, mimo Layout DOM
+  return createPortal(
     <div ref={overlayRef} onClick={handleOverlayClick}
-      className={`fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overscroll-contain p-4 sm:p-6
+      className={`fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto overscroll-contain p-4 sm:p-6
         transition-all duration-250
-        ${closing ? 'bg-black/0' : 'bg-black/40 dark:bg-black/60 backdrop-blur-sm'}`}>
+        ${closing ? 'bg-black/0' : 'bg-black/40 dark:bg-black/60 backdrop-blur-sm'}`}
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
 
       <div className={`relative w-full max-w-lg my-auto rounded-2xl
         bg-white dark:bg-[#111] border border-sage-200/60 dark:border-green-900/30
@@ -244,6 +255,7 @@ export default function AddPlantModal({ open, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
