@@ -50,6 +50,10 @@ const LIVE_REFRESH_MS = 20000;
 const MAX_CHART_HOURS = 48;
 const MIN_ZOOM_RANGE_MS = 2 * 60 * 1000;
 const OFFLINE_GAP_MS = 3 * 60 * 1000;
+// Reálne senzory nemusia posielať dáta presne každú minútu.
+// Pevný 3-minútový limit lámal graf pri redších meraniach na samé bodky a pôsobil ako loading/offline blok.
+const MAX_ADAPTIVE_OFFLINE_GAP_MS = 45 * 60 * 1000;
+const OFFLINE_GAP_MULTIPLIER = 3.5;
 const CHART_ANIMATION_MS = 860;
 const CHART_LEFT_PAD = 52;
 const CHART_RIGHT_PAD = 16;
@@ -272,6 +276,28 @@ function useElementSize() {
   return [ref, size];
 }
 
+function getAdaptiveGapMs(points, minimumGapMs = OFFLINE_GAP_MS) {
+  const gaps = [];
+
+  for (let i = 1; i < points.length; i += 1) {
+    const gap = points[i].ts - points[i - 1].ts;
+    if (Number.isFinite(gap) && gap > 0) gaps.push(gap);
+  }
+
+  if (!gaps.length) return minimumGapMs;
+
+  const sortedGaps = [...gaps].sort((a, b) => a - b);
+  const middle = Math.floor(sortedGaps.length / 2);
+  const medianGap = sortedGaps.length % 2 === 0
+    ? (sortedGaps[middle - 1] + sortedGaps[middle]) / 2
+    : sortedGaps[middle];
+
+  return Math.max(
+    minimumGapMs,
+    Math.min(MAX_ADAPTIVE_OFFLINE_GAP_MS, medianGap * OFFLINE_GAP_MULTIPLIER)
+  );
+}
+
 function buildBrokenSmoothPath(points, maxGapMs = OFFLINE_GAP_MS) {
   if (!points.length) return '';
 
@@ -404,6 +430,7 @@ function ProfessionalMetricChart({
     const visiblePoints = plottedPoints.filter(point => point.ts >= domainStart && point.ts <= domainEnd);
     const offlineRanges = [];
     const sortedByTime = plottedPoints.slice().sort((a, b) => a.ts - b.ts);
+    const adaptiveGapMs = getAdaptiveGapMs(sortedByTime);
     const rangeToX = (ts) => chartLeft + ((ts - domainStart) / domainRange) * chartPlotWidth;
 
     const addOfflineRange = (startTs, endTs) => {
@@ -424,22 +451,22 @@ function ProfessionalMetricChart({
 
     if (sortedByTime.length > 0) {
       const firstVisiblePoint = sortedByTime.find(point => point.ts >= domainStart && point.ts <= domainEnd);
-      if (firstVisiblePoint && firstVisiblePoint.ts - domainStart > OFFLINE_GAP_MS) {
+      if (firstVisiblePoint && firstVisiblePoint.ts - domainStart > adaptiveGapMs) {
         addOfflineRange(domainStart, firstVisiblePoint.ts);
       }
 
       for (let i = 1; i < sortedByTime.length; i += 1) {
         const previous = sortedByTime[i - 1];
         const current = sortedByTime[i];
-        const offlineStart = previous.ts + OFFLINE_GAP_MS;
+        const offlineStart = previous.ts + adaptiveGapMs;
         const offlineEnd = current.ts;
         if (offlineEnd > offlineStart) addOfflineRange(offlineStart, offlineEnd);
       }
     }
 
     const baseline = chartTop + chartPlotHeight;
-    const linePath = buildBrokenSmoothPath(plottedPoints);
-    const areaPath = buildBrokenAreaPath(plottedPoints, baseline);
+    const linePath = buildBrokenSmoothPath(plottedPoints, adaptiveGapMs);
+    const areaPath = buildBrokenAreaPath(plottedPoints, baseline, adaptiveGapMs);
 
     return {
       points: plottedPoints,
@@ -1358,7 +1385,7 @@ export default function PlantDetail() {
         ]);
 
         if (cancelled) return;
-        setHistory(h || []);
+        setHistory(previous => (Array.isArray(h) && h.length > 0 ? h : previous));
         setLatest(l || null);
       } catch {
         // silent live refresh fail
@@ -1397,7 +1424,7 @@ export default function PlantDetail() {
         getLatestReading(plant.device_id).catch(() => latest),
         getWateringHistory(id).catch(() => waterLog)
       ]);
-      setHistory(h || []);
+      setHistory(previous => (Array.isArray(h) && h.length > 0 ? h : previous));
       setLatest(l || latest);
       setWaterLog(w || []);
     } catch {
@@ -1564,7 +1591,7 @@ export default function PlantDetail() {
           onTouchCancel={handleTouchEnd}
           style={{ touchAction: 'none' }}
         >
-          {visibleChartData.length === 0 ? (
+          {chartData.length === 0 ? (
             <div className="flex items-center justify-center h-[260px] text-sm text-sage-400 dark:text-green-700">
               Žiadne dáta pre zvolený interval
             </div>
