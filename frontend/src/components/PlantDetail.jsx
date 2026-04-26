@@ -31,7 +31,7 @@ import {
 } from '../services/api';
 import GaugeRing from './GaugeRing';
 import PlantEditModal from './PlantEditModal';
-import { getDeviceStatus } from '../utils/deviceStatus';
+import { getDeviceStatus, isDeviceOnline, normalizeDeviceStatus } from '../utils/deviceStatus';
 import { getPlantEmoji } from '../utils/plantEmoji';
 
 const DEMO_PLANT = {
@@ -913,7 +913,9 @@ export default function PlantDetail() {
   }
 
   const activeMetric = useMemo(() => METRICS.find(m => m.key === metric), [metric]);
-  const deviceStatus = plant?.device_status || getDeviceStatus(latest?.created_at || latest);
+  const deviceStatus = latest || plant?.latest_reading
+    ? getDeviceStatus(latest || plant?.latest_reading)
+    : normalizeDeviceStatus(plant?.device_status);
 
   const { chartData, offlineZones, ticks } = useMemo(
     () => processChartData(history, hours),
@@ -1298,7 +1300,7 @@ export default function PlantDetail() {
 }
 
 function DeviceChip({ deviceId, status }) {
-  const isOnline = status?.isOnline;
+  const isOnline = isDeviceOnline(status);
   const dotClass = isOnline ? 'bg-green-500 dark:bg-green-500' : 'bg-red-400 dark:bg-red-500';
   const labelClass = isOnline ? 'text-green-600 dark:text-green-500' : 'text-red-500 dark:text-red-400';
   const label = isOnline ? 'Online' : 'Offline';
@@ -1320,7 +1322,7 @@ function DeviceChip({ deviceId, status }) {
 }
 
 function MobileStatusBadge({ status }) {
-  const isOnline = status?.isOnline;
+  const isOnline = isDeviceOnline(status);
   return (
     <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${isOnline ? 'text-green-600 dark:text-green-500' : 'text-red-500 dark:text-red-400'}`}>
       <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isOnline ? 'bg-green-500 dark:bg-green-500' : 'bg-red-400 dark:bg-red-500'}`} />
