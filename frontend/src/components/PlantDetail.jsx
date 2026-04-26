@@ -147,18 +147,68 @@ function buildSmoothPath(points) {
   if (!points.length) return '';
   if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
 
+  // Bezpecna monotonna kubicka krivka. Povodny Catmull-Rom pri nerovnomernych
+  // casovych odstupoch vedel posunut kontrolne body mimo segmentu a modra
+  // ciara/plocha potom vizualne preliezala do cerveneho offline bloku.
+  const n = points.length;
+  const segmentSlopes = [];
+
+  for (let i = 0; i < n - 1; i += 1) {
+    const dx = points[i + 1].x - points[i].x;
+    segmentSlopes[i] = Math.abs(dx) < 0.001 ? 0 : (points[i + 1].y - points[i].y) / dx;
+  }
+
+  const tangents = points.map((_, index) => {
+    if (index === 0) return segmentSlopes[0] || 0;
+    if (index === n - 1) return segmentSlopes[n - 2] || 0;
+
+    const previousSlope = segmentSlopes[index - 1] || 0;
+    const nextSlope = segmentSlopes[index] || 0;
+
+    if (previousSlope === 0 || nextSlope === 0 || Math.sign(previousSlope) !== Math.sign(nextSlope)) {
+      return 0;
+    }
+
+    return (previousSlope + nextSlope) / 2;
+  });
+
+  // Fritsch-Carlson limitovanie tangentov zmensuje overshoot pri ostrych spickach.
+  for (let i = 0; i < n - 1; i += 1) {
+    const slope = segmentSlopes[i];
+
+    if (!Number.isFinite(slope) || Math.abs(slope) < 0.000001) {
+      tangents[i] = 0;
+      tangents[i + 1] = 0;
+      continue;
+    }
+
+    const alpha = tangents[i] / slope;
+    const beta = tangents[i + 1] / slope;
+    const distance = alpha * alpha + beta * beta;
+
+    if (distance > 9) {
+      const scale = 3 / Math.sqrt(distance);
+      tangents[i] = scale * alpha * slope;
+      tangents[i + 1] = scale * beta * slope;
+    }
+  }
+
   let d = `M ${points[0].x} ${points[0].y}`;
 
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const p0 = points[i - 1] || points[i];
+  for (let i = 0; i < n - 1; i += 1) {
     const p1 = points[i];
     const p2 = points[i + 1];
-    const p3 = points[i + 2] || p2;
+    const dx = p2.x - p1.x;
 
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    if (Math.abs(dx) < 0.001) {
+      d += ` L ${p2.x} ${p2.y}`;
+      continue;
+    }
+
+    const cp1x = p1.x + dx / 3;
+    const cp2x = p2.x - dx / 3;
+    const cp1y = p1.y + tangents[i] * dx / 3;
+    const cp2y = p2.y - tangents[i + 1] * dx / 3;
 
     d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
@@ -360,6 +410,43 @@ function buildOfflineFillPath(ranges, top, height) {
     .join(' ');
 }
 
+function buildOnlineClipRects(offlineRanges, left, top, width, height) {
+  const right = left + width;
+  const sortedRanges = (Array.isArray(offlineRanges) ? offlineRanges : [])
+    .filter(range => Number.isFinite(range.x) && Number.isFinite(range.x2) && range.x2 > range.x)
+    .map(range => ({ x: Math.max(left, range.x), x2: Math.min(right, range.x2) }))
+    .filter(range => range.x2 - range.x > 0.25)
+    .sort((a, b) => a.x - b.x);
+
+  const mergedRanges = [];
+  sortedRanges.forEach((range) => {
+    const last = mergedRanges[mergedRanges.length - 1];
+
+    if (last && range.x <= last.x2 + 0.5) {
+      last.x2 = Math.max(last.x2, range.x2);
+    } else {
+      mergedRanges.push({ ...range });
+    }
+  });
+
+  const rects = [];
+  let cursor = left;
+
+  mergedRanges.forEach((range) => {
+    if (range.x > cursor + 0.25) {
+      rects.push({ x: cursor, y: top, width: range.x - cursor, height });
+    }
+
+    cursor = Math.max(cursor, range.x2);
+  });
+
+  if (cursor < right - 0.25) {
+    rects.push({ x: cursor, y: top, width: right - cursor, height });
+  }
+
+  return rects;
+}
+
 function buildBrokenSmoothPath(points, maxGapMs = OFFLINE_GAP_MS) {
   if (!points.length) return '';
 
@@ -481,6 +568,7 @@ function ProfessionalMetricChart({
         areaPath: '',
         offlineRanges: [],
         offlineFillPath: '',
+        onlineClipRects: [],
         transform: 'translate(0px, 0px) scale(1, 1)'
       };
     }
@@ -535,6 +623,7 @@ function ProfessionalMetricChart({
       })
       .filter(range => range.width > 0.5);
     const offlineFillPath = buildOfflineFillPath(offlineRanges, chartTop, chartPlotHeight);
+    const onlineClipRects = buildOnlineClipRects(offlineRanges, chartLeft, chartTop, chartPlotWidth, chartPlotHeight);
 
     const baseline = chartTop + chartPlotHeight;
     const linePath = buildBrokenSmoothPath(plottedPoints, adaptiveGapMs);
@@ -547,6 +636,7 @@ function ProfessionalMetricChart({
       areaPath,
       offlineRanges,
       offlineFillPath,
+      onlineClipRects,
       transform: 'none'
     };
   }, [data, visualDomain, metric, visualYDomain, chartLeft, chartPlotWidth, chartPlotHeight, chartTop]);
@@ -624,6 +714,17 @@ function ProfessionalMetricChart({
         <defs>
           <clipPath id={`${chartId}-clip`}>
             <rect x={chartLeft} y={chartTop} width={chartPlotWidth} height={chartPlotHeight} rx="8" />
+          </clipPath>
+          <clipPath id={`${chartId}-online-clip`}>
+            {(prepared.onlineClipRects || []).map((rect, index) => (
+              <rect
+                key={`online-clip-${index}`}
+                x={rect.x}
+                y={rect.y}
+                width={rect.width}
+                height={rect.height}
+              />
+            ))}
           </clipPath>
           <linearGradient id={`${chartId}-fill`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={metricConfig.color} stopOpacity="0.13" />
@@ -736,7 +837,7 @@ function ProfessionalMetricChart({
             </g>
           ))}
 
-          <g>
+          <g clipPath={`url(#${chartId}-online-clip)`}>
             {prepared.areaPath && (
               <path
                 d={prepared.areaPath}
@@ -751,7 +852,7 @@ function ProfessionalMetricChart({
                 fill="none"
                 stroke={metricConfig.color}
                 strokeWidth={isCompact ? 2.1 : 2.25}
-                strokeLinecap="round"
+                strokeLinecap="butt"
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
                 shapeRendering="geometricPrecision"
