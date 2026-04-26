@@ -298,6 +298,57 @@ function getAdaptiveGapMs(points, minimumGapMs = OFFLINE_GAP_MS) {
   );
 }
 
+function buildOfflineTimelineRanges(points, domainStart, domainEnd, maxGapMs) {
+  if (!Array.isArray(points) || points.length === 0 || !Number.isFinite(domainStart) || !Number.isFinite(domainEnd)) {
+    return [];
+  }
+
+  const sortedPoints = points
+    .filter(point => Number.isFinite(point.ts))
+    .sort((a, b) => a.ts - b.ts);
+
+  if (!sortedPoints.length || domainEnd <= domainStart) return [];
+
+  const ranges = [];
+  const addRange = (startTs, endTs) => {
+    if (!Number.isFinite(startTs) || !Number.isFinite(endTs) || endTs <= startTs) return;
+
+    const clippedStart = Math.max(startTs, domainStart);
+    const clippedEnd = Math.min(endTs, domainEnd);
+    if (clippedEnd <= clippedStart) return;
+
+    ranges.push({
+      startTs: clippedStart,
+      endTs: clippedEnd,
+      rawStartTs: startTs,
+      rawEndTs: endTs,
+      startInside: startTs > domainStart && startTs < domainEnd,
+      endInside: endTs > domainStart && endTs < domainEnd
+    });
+  };
+
+  // Keď graf začína ešte pred prvým reálnym meraním, zvýraznenie dotiahneme až po prvý bod.
+  // Vďaka tomu červená offline plocha vizuálne sedí s čiarou a pri animovanom zoome nevzniká medzera.
+  if (sortedPoints[0].ts > domainStart) {
+    addRange(domainStart, sortedPoints[0].ts);
+  }
+
+  for (let i = 1; i < sortedPoints.length; i += 1) {
+    const previous = sortedPoints[i - 1];
+    const current = sortedPoints[i];
+    if (current.ts - previous.ts > maxGapMs) {
+      addRange(previous.ts, current.ts);
+    }
+  }
+
+  const lastPoint = sortedPoints[sortedPoints.length - 1];
+  if (domainEnd > lastPoint.ts && domainEnd - lastPoint.ts > maxGapMs) {
+    addRange(lastPoint.ts, domainEnd);
+  }
+
+  return ranges;
+}
+
 function buildBrokenSmoothPath(points, maxGapMs = OFFLINE_GAP_MS) {
   if (!points.length) return '';
 
@@ -360,12 +411,29 @@ function ProfessionalMetricChart({
   showDateOnTicks
 }) {
   const [hover, setHover] = useState(null);
+  const hoverFrameRef = useRef(null);
+  const pendingHoverRef = useRef(null);
   const [wrapRef, size] = useElementSize();
   const chartId = useMemo(() => `pro-chart-${metric}`, [metric]);
   const animatedDomain = useAnimatedPair(domain, CHART_ANIMATION_MS);
   const animatedYDomain = useAnimatedPair(yDomain, CHART_ANIMATION_MS);
   const visualDomain = Array.isArray(animatedDomain) && animatedDomain.length === 2 ? animatedDomain : domain;
   const visualYDomain = Array.isArray(animatedYDomain) && animatedYDomain.length === 2 ? animatedYDomain : yDomain;
+
+  const commitHover = useCallback((nextHover) => {
+    pendingHoverRef.current = nextHover;
+
+    if (hoverFrameRef.current) return;
+
+    hoverFrameRef.current = requestAnimationFrame(() => {
+      hoverFrameRef.current = null;
+      setHover(pendingHoverRef.current);
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (hoverFrameRef.current) cancelAnimationFrame(hoverFrameRef.current);
+  }, []);
 
   const chartWidth = Math.max(320, Math.round(size.width || PRO_CHART_WIDTH));
   const isCompact = chartWidth < 560;
@@ -428,41 +496,20 @@ function ProfessionalMetricChart({
       });
 
     const visiblePoints = plottedPoints.filter(point => point.ts >= domainStart && point.ts <= domainEnd);
-    const offlineRanges = [];
-    const sortedByTime = plottedPoints.slice().sort((a, b) => a.ts - b.ts);
-    const adaptiveGapMs = getAdaptiveGapMs(sortedByTime);
+    const adaptiveGapMs = getAdaptiveGapMs(points);
     const rangeToX = (ts) => chartLeft + ((ts - domainStart) / domainRange) * chartPlotWidth;
-
-    const addOfflineRange = (startTs, endTs) => {
-      const clippedStart = Math.max(startTs, domainStart);
-      const clippedEnd = Math.min(endTs, domainEnd);
-      if (clippedEnd <= clippedStart) return;
-      const x1 = rangeToX(clippedStart);
-      const x2 = rangeToX(clippedEnd);
-      if (x2 > x1) {
-        offlineRanges.push({
+    const offlineRanges = buildOfflineTimelineRanges(points, domainStart, domainEnd, adaptiveGapMs)
+      .map((range) => {
+        const x1 = rangeToX(range.startTs);
+        const x2 = rangeToX(range.endTs);
+        return {
+          ...range,
           x: x1,
-          width: x2 - x1,
-          startTs: clippedStart,
-          endTs: clippedEnd
-        });
-      }
-    };
-
-    if (sortedByTime.length > 0) {
-      const firstVisiblePoint = sortedByTime.find(point => point.ts >= domainStart && point.ts <= domainEnd);
-      if (firstVisiblePoint && firstVisiblePoint.ts - domainStart > adaptiveGapMs) {
-        addOfflineRange(domainStart, firstVisiblePoint.ts);
-      }
-
-      for (let i = 1; i < sortedByTime.length; i += 1) {
-        const previous = sortedByTime[i - 1];
-        const current = sortedByTime[i];
-        const offlineStart = previous.ts + adaptiveGapMs;
-        const offlineEnd = current.ts;
-        if (offlineEnd > offlineStart) addOfflineRange(offlineStart, offlineEnd);
-      }
-    }
+          width: Math.max(0, x2 - x1),
+          x2
+        };
+      })
+      .filter(range => range.width > 0.5);
 
     const baseline = chartTop + chartPlotHeight;
     const linePath = buildBrokenSmoothPath(plottedPoints, adaptiveGapMs);
@@ -479,8 +526,8 @@ function ProfessionalMetricChart({
   }, [data, visualDomain, metric, visualYDomain, chartLeft, chartPlotWidth, chartPlotHeight, chartTop]);
 
   const handlePointerMove = useCallback((event) => {
-    if (!prepared.visiblePoints.length || !visualDomain?.length) {
-      setHover(null);
+    if ((!prepared.visiblePoints.length && !prepared.offlineRanges.length) || !visualDomain?.length) {
+      commitHover(null);
       return;
     }
 
@@ -497,7 +544,7 @@ function ProfessionalMetricChart({
 
     const offlineRange = prepared.offlineRanges.find(range => targetTs >= range.startTs && targetTs <= range.endTs);
     if (offlineRange) {
-      setHover({
+      commitHover({
         offline: true,
         x,
         y: Math.max(chartTop + 30, Math.min(chartTop + chartPlotHeight - 18, cursorY)),
@@ -513,20 +560,31 @@ function ProfessionalMetricChart({
     }, null);
 
     if (!nearest) {
-      setHover(null);
+      commitHover(null);
       return;
     }
 
-    setHover({
+    commitHover({
       point: nearest,
       x,
       y: nearest.y
     });
-  }, [visualDomain, prepared.visiblePoints, prepared.offlineRanges, chartLeft, chartPlotWidth, chartTop, chartPlotHeight, chartWidth, chartHeight]);
+  }, [visualDomain, prepared.visiblePoints, prepared.offlineRanges, chartLeft, chartPlotWidth, chartTop, chartPlotHeight, chartWidth, chartHeight, commitHover]);
 
-  const handlePointerLeave = useCallback(() => setHover(null), []);
+  const handlePointerLeave = useCallback(() => {
+    if (hoverFrameRef.current) {
+      cancelAnimationFrame(hoverFrameRef.current);
+      hoverFrameRef.current = null;
+    }
+    pendingHoverRef.current = null;
+    setHover(null);
+  }, []);
   const safeTicks = xTicks;
   const safeYTicks = Array.isArray(yTicks) && yTicks.length > 0 ? yTicks : [];
+  const renderedWidth = Math.max(1, size.width || chartWidth);
+  const renderedHeight = chartHeight;
+  const tooltipX = hover ? Math.min(renderedWidth - 10, Math.max(10, (hover.x / chartWidth) * renderedWidth)) : 0;
+  const tooltipY = hover ? Math.min(renderedHeight - 10, Math.max(10, (hover.y / chartHeight) * renderedHeight)) : 0;
 
   return (
     <div ref={wrapRef} className="relative h-[245px] sm:h-[270px] select-none overflow-hidden rounded-2xl">
@@ -599,7 +657,7 @@ function ProfessionalMetricChart({
 
         <g clipPath={`url(#${chartId}-clip)`}>
           {prepared.offlineRanges.map((range, index) => (
-            <g key={`offline-direct-${index}`} style={{ transition: 'opacity 220ms ease' }}>
+            <g key={`offline-direct-${index}`} style={{ transition: 'opacity 180ms ease' }}>
               <rect
                 x={range.x}
                 y={chartTop}
@@ -607,16 +665,30 @@ function ProfessionalMetricChart({
                 height={chartPlotHeight}
                 fill={`url(#${chartId}-offline-fill)`}
               />
-              <line
-                x1={range.x}
-                x2={range.x}
-                y1={chartTop}
-                y2={chartTop + chartPlotHeight}
-                className="stroke-red-400/35 dark:stroke-red-500/25"
-                strokeDasharray="4 7"
-                strokeWidth="1"
-                vectorEffect="non-scaling-stroke"
-              />
+              {range.startInside && (
+                <line
+                  x1={range.x}
+                  x2={range.x}
+                  y1={chartTop}
+                  y2={chartTop + chartPlotHeight}
+                  className="stroke-red-400/35 dark:stroke-red-500/25"
+                  strokeDasharray="4 7"
+                  strokeWidth="1"
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+              {range.endInside && (
+                <line
+                  x1={range.x2}
+                  x2={range.x2}
+                  y1={chartTop}
+                  y2={chartTop + chartPlotHeight}
+                  className="stroke-red-400/35 dark:stroke-red-500/25"
+                  strokeDasharray="4 7"
+                  strokeWidth="1"
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
             </g>
           ))}
 
@@ -699,9 +771,10 @@ function ProfessionalMetricChart({
             ? 'border-red-300/60 bg-red-50/95 text-red-700 dark:border-red-500/25 dark:bg-[#190d0d]/95 dark:text-red-200'
             : 'border-white/70 bg-white/95 text-sage-700 shadow-black/10 dark:border-green-500/20 dark:bg-[#07120d]/95 dark:text-green-500 dark:shadow-black/30'}`}
           style={{
-            left: `${Math.min(88, Math.max(8, (hover.x / chartWidth) * 100))}%`,
-            top: `${Math.min(72, Math.max(8, (hover.y / chartHeight) * 100))}%`,
-            transform: 'translate(-50%, -110%)'
+            left: `${tooltipX}px`,
+            top: `${tooltipY}px`,
+            transform: 'translate3d(-50%, -112%, 0)',
+            willChange: 'left, top, transform'
           }}
         >
           {hover.offline ? (
