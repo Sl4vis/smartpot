@@ -48,6 +48,7 @@ const DEMO_PLANT = {
 };
 
 const LIVE_REFRESH_MS = 20000;
+const MAX_CHART_HOURS = 48;
 const GAP_THRESHOLD_MS = 3 * 60 * 1000;
 const MIN_ZOOM_RANGE_MS = 2 * 60 * 1000;
 const CHART_LEFT_PAD = 52;
@@ -205,7 +206,16 @@ function processChartData(rawHistory, hours) {
 
   const sorted = rawHistory
     .map(r => ({ ...r, ts: new Date(r.created_at).getTime(), offline: false }))
+    .filter(r => Number.isFinite(r.ts) && r.ts >= rangeStart && r.ts <= now)
     .sort((a, b) => a.ts - b.ts);
+
+  if (sorted.length === 0) {
+    return {
+      chartData: [createOfflinePoint(rangeStart), createOfflinePoint(now)],
+      offlineZones: [{ x1: rangeStart, x2: now }],
+      ticks: generateTicks(rangeStart, now)
+    };
+  }
 
   const chartData = [];
   const offlineZones = [];
@@ -774,7 +784,7 @@ export default function PlantDetail() {
         setPlant(p);
 
         const [h, l, w, a] = await Promise.all([
-          getSensorHistory(p.device_id, hours),
+          getSensorHistory(p.device_id, MAX_CHART_HOURS),
           getLatestReading(p.device_id),
           getWateringHistory(id).catch(() => []),
           getAnalysisHistory(id, 1).catch(() => [])
@@ -815,27 +825,9 @@ export default function PlantDetail() {
     };
   }, [id]);
 
-  const isFirstRender = React.useRef(true);
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-
-    if (!plant?.device_id || demoMode) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const h = await getSensorHistory(plant.device_id, hours);
-        if (!cancelled) setHistory(h || []);
-      } catch {
-        // silent
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [hours]);
+  // Pri prepínaní 6h / 12h / 24h / 48h už nefetchneme nové dáta.
+  // Držíme 48h buffer a mení sa iba X/Y rozsah grafu, takže graf ostane viditeľný
+  // a prechod je plynulý bez bieleho loading overlayu.
 
   useEffect(() => {
     if (!plant?.device_id || demoMode) return undefined;
@@ -845,7 +837,7 @@ export default function PlantDetail() {
     const refreshLive = async () => {
       try {
         const [h, l] = await Promise.all([
-          getSensorHistory(plant.device_id, hours),
+          getSensorHistory(plant.device_id, MAX_CHART_HOURS),
           getLatestReading(plant.device_id)
         ]);
 
@@ -869,7 +861,7 @@ export default function PlantDetail() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [plant?.device_id, hours, demoMode]);
+  }, [plant?.device_id, demoMode]);
 
   async function handleAnalyze() {
     setAnalyzing(true);
@@ -885,7 +877,7 @@ export default function PlantDetail() {
     try {
       await waterPlant(id, { notes: 'Manuálne polievanie' });
       const [h, l, w] = await Promise.all([
-        getSensorHistory(plant.device_id, hours).catch(() => history),
+        getSensorHistory(plant.device_id, MAX_CHART_HOURS).catch(() => history),
         getLatestReading(plant.device_id).catch(() => latest),
         getWateringHistory(id).catch(() => waterLog)
       ]);
@@ -1128,7 +1120,7 @@ export default function PlantDetail() {
                     dot={false}
                     activeDot={(props) => (props?.payload?.offline ? null : <circle cx={props.cx} cy={props.cy} r={5} strokeWidth={2} stroke="#fff" fill={activeMetric.color} />)}
                     isAnimationActive={!zoomDomain}
-                    animationDuration={650}
+                    animationDuration={700}
                     animationEasing="ease-in-out"
                     connectNulls={false}
                     baseValue={yAxisDomain[0]}
