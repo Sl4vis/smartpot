@@ -1,9 +1,68 @@
 export const OFFLINE_AFTER_MINUTES = 3;
 
+function getTimestamp(readingOrTimestamp) {
+  if (typeof readingOrTimestamp === 'string') return readingOrTimestamp;
+
+  return readingOrTimestamp?.created_at ||
+    readingOrTimestamp?.lastSyncAt ||
+    readingOrTimestamp?.last_sync_at ||
+    readingOrTimestamp?.lastSuccessfulMessageAt ||
+    readingOrTimestamp?.last_successful_message_at ||
+    null;
+}
+
+export function isDeviceOnline(status) {
+  if (!status) return false;
+  if (typeof status.isOnline === 'boolean') return status.isOnline;
+  if (typeof status.is_online === 'boolean') return status.is_online;
+  return status.status === 'online';
+}
+
+export function normalizeDeviceStatus(statusOrReading) {
+  const timestamp = getTimestamp(statusOrReading);
+  const computed = getDeviceStatus(timestamp);
+
+  if (!statusOrReading || typeof statusOrReading === 'string') {
+    return computed;
+  }
+
+  const hasBackendStatus = Boolean(
+    statusOrReading.status ||
+    typeof statusOrReading.is_online === 'boolean' ||
+    typeof statusOrReading.isOnline === 'boolean'
+  );
+
+  if (!hasBackendStatus) {
+    return getDeviceStatus(statusOrReading);
+  }
+
+  const online = isDeviceOnline(statusOrReading);
+  const isOffline = typeof statusOrReading.isOffline === 'boolean'
+    ? statusOrReading.isOffline
+    : typeof statusOrReading.is_offline === 'boolean'
+      ? statusOrReading.is_offline
+      : !online;
+
+  return {
+    ...computed,
+    status: statusOrReading.status || (online ? 'online' : 'offline'),
+    label: statusOrReading.label || (online ? 'Online' : 'Offline'),
+    isOnline: online,
+    isOffline,
+    isNoData: statusOrReading.isNoData ?? statusOrReading.is_no_data ?? computed.isNoData,
+    stale: statusOrReading.stale ?? statusOrReading.is_stale ?? computed.stale,
+    minutesSinceLastSync: statusOrReading.minutesSinceLastSync ?? statusOrReading.minutes_since_last_sync ?? computed.minutesSinceLastSync,
+    lastSyncAt: statusOrReading.lastSyncAt ?? statusOrReading.last_sync_at ?? computed.lastSyncAt,
+    lastSuccessfulMessageAt: statusOrReading.lastSuccessfulMessageAt ?? statusOrReading.last_successful_message_at ?? computed.lastSuccessfulMessageAt,
+    relativeLabel: statusOrReading.relativeLabel ?? computed.relativeLabel,
+    compactLabel: statusOrReading.compactLabel ?? computed.compactLabel,
+    absoluteLabel: statusOrReading.absoluteLabel ?? computed.absoluteLabel,
+    warningMessage: statusOrReading.warningMessage ?? statusOrReading.warning_message ?? computed.warningMessage
+  };
+}
+
 export function getDeviceStatus(readingOrTimestamp) {
-  const timestamp = typeof readingOrTimestamp === 'string'
-    ? readingOrTimestamp
-    : readingOrTimestamp?.created_at || null;
+  const timestamp = getTimestamp(readingOrTimestamp);
 
   // Ak nie sú žiadne dáta → Offline
   if (!timestamp) {
@@ -24,7 +83,13 @@ export function getDeviceStatus(readingOrTimestamp) {
     };
   }
 
-  const minutes = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 60000));
+  const parsedTimestamp = new Date(timestamp).getTime();
+
+  if (!Number.isFinite(parsedTimestamp)) {
+    return getDeviceStatus(null);
+  }
+
+  const minutes = Math.max(0, Math.floor((Date.now() - parsedTimestamp) / 60000));
   const isOffline = minutes >= OFFLINE_AFTER_MINUTES;
 
   return {
