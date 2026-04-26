@@ -569,7 +569,6 @@ export default function PlantDetail() {
   const [hours, setHours] = useState(24);
   const [metric, setMetric] = useState('soil_moisture');
   const [loading, setLoading] = useState(true);
-  const [chartLoading, setChartLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
   const [zoomDomain, setZoomDomain] = useState(null);
@@ -826,16 +825,12 @@ export default function PlantDetail() {
     if (!plant?.device_id || demoMode) return;
 
     let cancelled = false;
-    setChartLoading(true);
-
     (async () => {
       try {
         const h = await getSensorHistory(plant.device_id, hours);
         if (!cancelled) setHistory(h || []);
       } catch {
         // silent
-      } finally {
-        if (!cancelled) setChartLoading(false);
       }
     })();
 
@@ -1063,12 +1058,6 @@ export default function PlantDetail() {
           onTouchCancel={handleTouchEnd}
           style={{ touchAction: 'none' }}
         >
-          {chartLoading && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white dark:bg-green-950/50/60 backdrop-blur-[1px] rounded-xl transition-opacity duration-200">
-              <div className="w-5 h-5 border-2 border-green-200 dark:border-green-800/30 border-t-green-500 rounded-full animate-spin" />
-            </div>
-          )}
-
           {chartData.length === 0 && offlineZones.length === 0 ? (
             <div className="flex items-center justify-center h-[260px] text-sm text-sage-400 dark:text-green-700">
               Žiadne dáta pre zvolený interval
@@ -1139,8 +1128,8 @@ export default function PlantDetail() {
                     dot={false}
                     activeDot={(props) => (props?.payload?.offline ? null : <circle cx={props.cx} cy={props.cy} r={5} strokeWidth={2} stroke="#fff" fill={activeMetric.color} />)}
                     isAnimationActive={!zoomDomain}
-                    animationDuration={350}
-                    animationEasing="ease-out"
+                    animationDuration={650}
+                    animationEasing="ease-in-out"
                     connectNulls={false}
                     baseValue={yAxisDomain[0]}
                   />
