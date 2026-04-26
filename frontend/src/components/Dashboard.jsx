@@ -12,7 +12,7 @@ import {
 import { getDashboardOverview } from '../services/api';
 import GaugeRing from './GaugeRing';
 import AddPlantModal from './AddPlantModal';
-import { getDeviceStatus } from '../utils/deviceStatus';
+import { getDeviceStatus, isDeviceOnline, normalizeDeviceStatus } from '../utils/deviceStatus';
 import { getPlantEmoji } from '../utils/plantEmoji';
 
 const REFRESH_INTERVAL_MS = 20000;
@@ -107,7 +107,7 @@ function PlantCard({ data, i }) {
   const reading = r || {};
   const analysis = a || {};
   const score = analysis.health_score || 0;
-  const status = data?.device_status || getDeviceStatus(reading);
+  const status = r ? getDeviceStatus(r) : normalizeDeviceStatus(data?.device_status);
   const emoji = getPlantEmoji(plant);
 
   const scoreColor = score >= 70 ? '#22c55e' : score >= 40 ? '#eab308' : '#ef4444';
@@ -175,7 +175,7 @@ function PlantCard({ data, i }) {
 }
 
 function StatusBadge({ status }) {
-  if (status?.isOnline) {
+  if (isDeviceOnline(status)) {
     return (
       <span className="inline-flex items-center gap-1 font-semibold text-green-600 dark:text-green-500 whitespace-nowrap">
         <span className="relative flex h-2 w-2">
