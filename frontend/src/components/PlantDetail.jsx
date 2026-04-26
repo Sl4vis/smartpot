@@ -18,7 +18,7 @@ import {
   TrendingDown,
   Activity
 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   getPlant,
   getSensorHistory,
@@ -49,7 +49,6 @@ const DEMO_PLANT = {
 
 const LIVE_REFRESH_MS = 20000;
 const MAX_CHART_HOURS = 48;
-const GAP_THRESHOLD_MS = 3 * 60 * 1000;
 const MIN_ZOOM_RANGE_MS = 2 * 60 * 1000;
 const CHART_LEFT_PAD = 52;
 const CHART_RIGHT_PAD = 16;
@@ -173,104 +172,36 @@ function clampZoomDomain(domain, fullDomain) {
 }
 
 /**
- * Spracuje surové dáta z histórie:
- * - Pokryje celý časový rozsah (now - hours → now)
- * - Nájde medzery (offline) a zapíše ich ako zóny
- * - Vráti { chartData, offlineZones, ticks }
+ * Spracuje surové dáta z histórie bez vkladania "offline" nulových bodov.
  *
- * Dôležité: offline úseky už nepridávame ako nulové body do série.
- * Reálna čiara tak nekreslí zvislé artefakty na hranách zoomu.
+ * Prečo:
+ * - pri prepínaní 6h / 12h / 24h / 48h sa nesmie objaviť sivý loading/offline blok,
+ * - graf má ostať stále viditeľný a iba zmeniť časovú os,
+ * - X os je ukotvená na posledné reálne meranie, nie na Date.now(), takže keď zariadenie chvíľu
+ *   neposlalo dáta, graf sa zbytočne neposúva do prázdneho budúceho úseku.
  */
-function createOfflinePoint(ts) {
-  return {
-    ts,
-    soil_moisture: 0,
-    temperature: 0,
-    humidity: 0,
-    light_lux: 0,
-    offline: true
-  };
-}
-
 function processChartData(rawHistory, hours) {
-  const now = Date.now();
-  const rangeStart = now - hours * 60 * 60 * 1000;
-
-  if (!rawHistory || rawHistory.length === 0) {
-    return {
-      chartData: [createOfflinePoint(rangeStart), createOfflinePoint(now)],
-      offlineZones: [{ x1: rangeStart, x2: now }],
-      ticks: generateTicks(rangeStart, now)
-    };
-  }
-
-  const sorted = rawHistory
-    .map(r => ({ ...r, ts: new Date(r.created_at).getTime(), offline: false }))
-    .filter(r => Number.isFinite(r.ts) && r.ts >= rangeStart && r.ts <= now)
+  const points = (Array.isArray(rawHistory) ? rawHistory : [])
+    .map(r => ({ ...r, ts: new Date(r.created_at).getTime() }))
+    .filter(r => Number.isFinite(r.ts))
     .sort((a, b) => a.ts - b.ts);
 
-  if (sorted.length === 0) {
-    return {
-      chartData: [createOfflinePoint(rangeStart), createOfflinePoint(now)],
-      offlineZones: [{ x1: rangeStart, x2: now }],
-      ticks: generateTicks(rangeStart, now)
-    };
-  }
+  const fallbackEnd = Date.now();
+  const rangeEnd = points.length > 0 ? points[points.length - 1].ts : fallbackEnd;
+  const rangeStart = rangeEnd - hours * 60 * 60 * 1000;
 
-  const chartData = [];
-  const offlineZones = [];
-
-  if (sorted[0].ts - rangeStart > GAP_THRESHOLD_MS) {
-    chartData.push(createOfflinePoint(rangeStart));
-    chartData.push(createOfflinePoint(Math.max(rangeStart, sorted[0].ts - 1)));
-    offlineZones.push({ x1: rangeStart, x2: sorted[0].ts });
-  }
-
-  for (let i = 0; i < sorted.length; i++) {
-    chartData.push(sorted[i]);
-
-    if (i < sorted.length - 1) {
-      const next = sorted[i + 1];
-      const gap = next.ts - sorted[i].ts;
-
-      if (gap > GAP_THRESHOLD_MS) {
-        chartData.push(createOfflinePoint(sorted[i].ts + 1));
-        chartData.push(createOfflinePoint(next.ts - 1));
-        offlineZones.push({ x1: sorted[i].ts, x2: next.ts });
-      }
-    }
-  }
-
-  const lastTs = sorted[sorted.length - 1].ts;
-  if (now - lastTs > GAP_THRESHOLD_MS) {
-    chartData.push(createOfflinePoint(lastTs + 1));
-    chartData.push(createOfflinePoint(now));
-    offlineZones.push({ x1: lastTs, x2: now });
-  }
-
-  chartData.sort((a, b) => a.ts - b.ts);
+  const visiblePoints = points.filter(point => point.ts >= rangeStart && point.ts <= rangeEnd);
 
   return {
-    chartData,
-    offlineZones,
-    ticks: generateTicks(rangeStart, now)
+    chartData: visiblePoints,
+    offlineZones: [],
+    ticks: generateTicks(rangeStart, rangeEnd)
   };
 }
 
 function getVisibleChartData(data, domain) {
   if (!domain || !Array.isArray(data) || data.length === 0) return data;
   return data.filter(point => point.ts >= domain.x1 && point.ts <= domain.x2);
-}
-
-function getVisibleOfflineZones(zones, domain) {
-  if (!domain || !Array.isArray(zones) || zones.length === 0) return zones;
-
-  return zones
-    .map(zone => ({
-      x1: Math.max(zone.x1, domain.x1),
-      x2: Math.min(zone.x2, domain.x2)
-    }))
-    .filter(zone => zone.x2 > zone.x1);
 }
 
 function getMetricValues(data, metric) {
@@ -904,7 +835,7 @@ export default function PlantDetail() {
     ? getDeviceStatus(latest || plant?.latest_reading)
     : normalizeDeviceStatus(plant?.device_status);
 
-  const { chartData, offlineZones, ticks } = useMemo(
+  const { chartData, ticks } = useMemo(
     () => processChartData(history, hours),
     [history, hours]
   );
@@ -914,10 +845,6 @@ export default function PlantDetail() {
     () => getVisibleChartData(chartData, zoomDomain),
     [chartData, zoomDomain]
   );
-  const visibleOfflineZones = useMemo(
-    () => getVisibleOfflineZones(offlineZones, zoomDomain),
-    [offlineZones, zoomDomain]
-  );
   const yAxisDomain = useMemo(
     () => getYAxisDomain(visibleChartData, chartData, metric),
     [visibleChartData, chartData, metric]
@@ -925,9 +852,11 @@ export default function PlantDetail() {
   const renderedChartData = useMemo(
     () => chartData.map(point => ({
       ...point,
-      renderValue: point.offline ? yAxisDomain[0] : point[metric]
+      renderValue: typeof point?.[metric] === 'number' && Number.isFinite(point[metric])
+        ? point[metric]
+        : null
     })),
-    [chartData, yAxisDomain, metric]
+    [chartData, metric]
   );
 
   const smartWateringInsights = useMemo(
@@ -1050,7 +979,7 @@ export default function PlantDetail() {
           onTouchCancel={handleTouchEnd}
           style={{ touchAction: 'none' }}
         >
-          {chartData.length === 0 && offlineZones.length === 0 ? (
+          {chartData.length === 0 ? (
             <div className="flex items-center justify-center h-[260px] text-sm text-sage-400 dark:text-green-700">
               Žiadne dáta pre zvolený interval
             </div>
@@ -1066,18 +995,6 @@ export default function PlantDetail() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="4 4" stroke="#eef1ea" vertical={false} />
-
-                  {visibleOfflineZones.map((zone, i) => (
-                    <ReferenceArea
-                      key={`offline-${i}`}
-                      x1={zone.x1}
-                      x2={zone.x2}
-                      fill="#fef2f2"
-                      fillOpacity={0.7}
-                      strokeOpacity={0}
-                      ifOverflow="hidden"
-                    />
-                  ))}
 
                   <XAxis
                     dataKey="ts"
@@ -1119,8 +1036,8 @@ export default function PlantDetail() {
                     strokeWidth={2.5}
                     dot={false}
                     activeDot={(props) => (props?.payload?.offline ? null : <circle cx={props.cx} cy={props.cy} r={5} strokeWidth={2} stroke="#fff" fill={activeMetric.color} />)}
-                    isAnimationActive={!zoomDomain}
-                    animationDuration={700}
+                    isAnimationActive={true}
+                    animationDuration={450}
                     animationEasing="ease-in-out"
                     connectNulls={false}
                     baseValue={yAxisDomain[0]}
@@ -1130,9 +1047,9 @@ export default function PlantDetail() {
 
               <div className="flex items-center justify-between px-3 mt-1 gap-3">
                 <div className="flex items-center gap-3 min-h-[16px]">
-                  {visibleOfflineZones.length > 0 && (
+                  {deviceStatus?.isOffline && (
                     <div className="flex items-center gap-1.5 text-[10px] text-sage-400 dark:text-green-700">
-                      <span className="inline-block w-3 h-2 rounded-sm bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/20" />
+                      <span className="inline-block w-2 h-2 rounded-full bg-red-400/70 dark:bg-red-500/40" />
                       Zariadenie offline
                     </div>
                   )}
