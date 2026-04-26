@@ -382,18 +382,20 @@ function ProfessionalMetricChart({
     const domainStart = visualDomain[0];
     const domainEnd = visualDomain[1];
     const domainRange = Math.max(1, domainEnd - domainStart);
-    const latestPointTs = points[points.length - 1].ts;
-    const bufferEnd = Math.max(latestPointTs, domainEnd);
-    const bufferStart = bufferEnd - MAX_CHART_HOURS * 60 * 60 * 1000;
-    const bufferRange = Math.max(1, bufferEnd - bufferStart);
     const yMin = visualYDomain[0];
     const yMax = visualYDomain[1];
     const yRange = Math.max(0.0001, yMax - yMin);
 
+    const renderPadding = domainRange * 0.04;
+    const renderStart = domainStart - renderPadding;
+    const renderEnd = domainEnd + renderPadding;
+
+    // Body kreslíme priamo do aktuálnej animovanej domény.
+    // Nepoužívame CSS scale/transform na path, lebo pri zoome robí rozmazané hrany.
     const plottedPoints = points
-      .filter(point => point.ts >= bufferStart && point.ts <= bufferEnd)
+      .filter(point => point.ts >= renderStart && point.ts <= renderEnd)
       .map(point => {
-        const x = ((point.ts - bufferStart) / bufferRange) * chartPlotWidth;
+        const x = chartLeft + ((point.ts - domainStart) / domainRange) * chartPlotWidth;
         const safeValue = clampChartValue(point.value, yMin, yMax);
         const y = chartTop + (1 - ((safeValue - yMin) / yRange)) * chartPlotHeight;
         return { ...point, x, y };
@@ -410,7 +412,14 @@ function ProfessionalMetricChart({
       if (clippedEnd <= clippedStart) return;
       const x1 = rangeToX(clippedStart);
       const x2 = rangeToX(clippedEnd);
-      if (x2 > x1) offlineRanges.push({ x: x1, width: x2 - x1 });
+      if (x2 > x1) {
+        offlineRanges.push({
+          x: x1,
+          width: x2 - x1,
+          startTs: clippedStart,
+          endTs: clippedEnd
+        });
+      }
     };
 
     if (sortedByTime.length > 0) {
@@ -431,9 +440,6 @@ function ProfessionalMetricChart({
     const baseline = chartTop + chartPlotHeight;
     const linePath = buildBrokenSmoothPath(plottedPoints);
     const areaPath = buildBrokenAreaPath(plottedPoints, baseline);
-    const selectedStartX = ((domainStart - bufferStart) / bufferRange) * chartPlotWidth;
-    const scaleX = bufferRange / domainRange;
-    const translateX = chartLeft - selectedStartX * scaleX;
 
     return {
       points: plottedPoints,
@@ -441,7 +447,7 @@ function ProfessionalMetricChart({
       path: linePath,
       areaPath,
       offlineRanges,
-      transform: `translate(${translateX}px, 0px) scale(${scaleX}, 1)`
+      transform: 'none'
     };
   }, [data, visualDomain, metric, visualYDomain, chartLeft, chartPlotWidth, chartPlotHeight, chartTop]);
 
@@ -454,8 +460,25 @@ function ProfessionalMetricChart({
     const rect = event.currentTarget.getBoundingClientRect();
     const plotLeftPx = (chartLeft / chartWidth) * rect.width;
     const plotWidthPx = (chartPlotWidth / chartWidth) * rect.width;
+    const plotTopPx = (chartTop / chartHeight) * rect.height;
+    const plotHeightPx = (chartPlotHeight / chartHeight) * rect.height;
     const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left - plotLeftPx) / Math.max(1, plotWidthPx)));
+    const yRatio = Math.max(0, Math.min(1, (event.clientY - rect.top - plotTopPx) / Math.max(1, plotHeightPx)));
     const targetTs = visualDomain[0] + ratio * (visualDomain[1] - visualDomain[0]);
+    const x = chartLeft + ratio * chartPlotWidth;
+    const cursorY = chartTop + yRatio * chartPlotHeight;
+
+    const offlineRange = prepared.offlineRanges.find(range => targetTs >= range.startTs && targetTs <= range.endTs);
+    if (offlineRange) {
+      setHover({
+        offline: true,
+        x,
+        y: Math.max(chartTop + 30, Math.min(chartTop + chartPlotHeight - 18, cursorY)),
+        ts: targetTs,
+        range: offlineRange
+      });
+      return;
+    }
 
     const nearest = prepared.visiblePoints.reduce((best, point) => {
       if (!best) return point;
@@ -467,13 +490,12 @@ function ProfessionalMetricChart({
       return;
     }
 
-    const x = chartLeft + ratio * chartPlotWidth;
     setHover({
       point: nearest,
       x,
       y: nearest.y
     });
-  }, [visualDomain, prepared.visiblePoints, chartLeft, chartPlotWidth, chartWidth]);
+  }, [visualDomain, prepared.visiblePoints, prepared.offlineRanges, chartLeft, chartPlotWidth, chartTop, chartPlotHeight, chartWidth, chartHeight]);
 
   const handlePointerLeave = useCallback(() => setHover(null), []);
   const safeTicks = xTicks;
@@ -493,8 +515,8 @@ function ProfessionalMetricChart({
             <rect x={chartLeft} y={chartTop} width={chartPlotWidth} height={chartPlotHeight} rx="8" />
           </clipPath>
           <linearGradient id={`${chartId}-fill`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={metricConfig.color} stopOpacity="0.20" />
-            <stop offset="55%" stopColor={metricConfig.color} stopOpacity="0.07" />
+            <stop offset="0%" stopColor={metricConfig.color} stopOpacity="0.13" />
+            <stop offset="62%" stopColor={metricConfig.color} stopOpacity="0.045" />
             <stop offset="100%" stopColor={metricConfig.color} stopOpacity="0" />
           </linearGradient>
           <linearGradient id={`${chartId}-offline-fill`} x1="0" y1="0" x2="0" y2="1">
@@ -502,13 +524,6 @@ function ProfessionalMetricChart({
             <stop offset="65%" stopColor="#ef4444" stopOpacity="0.045" />
             <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
           </linearGradient>
-          <filter id={`${chartId}-glow`} x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="2.4" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
         </defs>
 
         <rect
@@ -578,15 +593,7 @@ function ProfessionalMetricChart({
             </g>
           ))}
 
-          <g
-            style={{
-              transform: prepared.transform,
-              transformOrigin: '0px 0px',
-              transformBox: 'view-box',
-              transition: 'none',
-              willChange: 'transform'
-            }}
-          >
+          <g>
             {prepared.areaPath && (
               <path
                 d={prepared.areaPath}
@@ -600,36 +607,40 @@ function ProfessionalMetricChart({
                 d={prepared.path}
                 fill="none"
                 stroke={metricConfig.color}
-                strokeWidth={isCompact ? 2.4 : 2.6}
+                strokeWidth={isCompact ? 2.1 : 2.25}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
-                filter={`url(#${chartId}-glow)`}
-                style={{ transition: 'opacity 220ms ease' }}
+                shapeRendering="geometricPrecision"
+                style={{ transition: 'opacity 160ms ease' }}
               />
             )}
           </g>
         </g>
 
-        {hover?.point && !isCompact && (
+        {hover && !isCompact && (
           <g pointerEvents="none">
             <line
               x1={hover.x}
               x2={hover.x}
               y1={chartTop}
               y2={chartTop + chartPlotHeight}
-              stroke={metricConfig.color}
-              strokeOpacity="0.45"
+              stroke={hover.offline ? '#ef4444' : metricConfig.color}
+              strokeOpacity={hover.offline ? '0.38' : '0.45'}
               strokeDasharray="4 5"
+              vectorEffect="non-scaling-stroke"
             />
-            <circle
-              cx={hover.x}
-              cy={hover.y}
-              r="4.5"
-              fill={metricConfig.color}
-              stroke="white"
-              strokeWidth="2"
-            />
+            {!hover.offline && hover.point && (
+              <circle
+                cx={hover.x}
+                cy={hover.y}
+                r="4.5"
+                fill={metricConfig.color}
+                stroke="white"
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
           </g>
         )}
 
@@ -655,21 +666,36 @@ function ProfessionalMetricChart({
         })}
       </svg>
 
-      {hover?.point && !isCompact && (
+      {hover && !isCompact && (
         <div
-          className="pointer-events-none absolute z-20 rounded-xl border border-white/70 bg-white/95 px-3 py-2 text-xs shadow-xl shadow-black/10 backdrop-blur-md dark:border-green-500/20 dark:bg-[#07120d]/95 dark:shadow-black/30"
+          className={`pointer-events-none absolute z-20 rounded-xl border px-3 py-2 text-xs shadow-lg backdrop-blur-md ${hover.offline
+            ? 'border-red-300/60 bg-red-50/95 text-red-700 dark:border-red-500/25 dark:bg-[#190d0d]/95 dark:text-red-200'
+            : 'border-white/70 bg-white/95 text-sage-700 shadow-black/10 dark:border-green-500/20 dark:bg-[#07120d]/95 dark:text-green-500 dark:shadow-black/30'}`}
           style={{
             left: `${Math.min(88, Math.max(8, (hover.x / chartWidth) * 100))}%`,
             top: `${Math.min(72, Math.max(8, (hover.y / chartHeight) * 100))}%`,
             transform: 'translate(-50%, -110%)'
           }}
         >
-          <div className="mb-1 whitespace-nowrap font-semibold text-green-900 dark:text-green-100">
-            {formatTooltipLabel(hover.point.ts)}
-          </div>
-          <div className="whitespace-nowrap text-sage-600 dark:text-green-500">
-            {Math.round(hover.point.value * 10) / 10}{metricConfig.unit}
-          </div>
+          {hover.offline ? (
+            <>
+              <div className="mb-1 whitespace-nowrap font-semibold text-red-700 dark:text-red-200">
+                Zariadenie offline
+              </div>
+              <div className="whitespace-nowrap text-red-600/80 dark:text-red-300/80">
+                Bez dát v tomto čase
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mb-1 whitespace-nowrap font-semibold text-green-900 dark:text-green-100">
+                {formatTooltipLabel(hover.point.ts)}
+              </div>
+              <div className="whitespace-nowrap text-sage-600 dark:text-green-500">
+                {Math.round(hover.point.value * 10) / 10}{metricConfig.unit}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
