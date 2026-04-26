@@ -349,6 +349,17 @@ function buildOfflineTimelineRanges(points, domainStart, domainEnd, maxGapMs) {
   return ranges;
 }
 
+function buildOfflineFillPath(ranges, top, height) {
+  if (!Array.isArray(ranges) || ranges.length === 0) return '';
+
+  const bottom = top + height;
+
+  return ranges
+    .filter(range => Number.isFinite(range.fillX) && Number.isFinite(range.fillX2) && range.fillX2 > range.fillX)
+    .map(range => `M ${range.fillX} ${top} H ${range.fillX2} V ${bottom} H ${range.fillX} Z`)
+    .join(' ');
+}
+
 function buildBrokenSmoothPath(points, maxGapMs = OFFLINE_GAP_MS) {
   if (!points.length) return '';
 
@@ -469,6 +480,7 @@ function ProfessionalMetricChart({
         path: '',
         areaPath: '',
         offlineRanges: [],
+        offlineFillPath: '',
         transform: 'translate(0px, 0px) scale(1, 1)'
       };
     }
@@ -497,19 +509,32 @@ function ProfessionalMetricChart({
 
     const visiblePoints = plottedPoints.filter(point => point.ts >= domainStart && point.ts <= domainEnd);
     const adaptiveGapMs = getAdaptiveGapMs(points);
-    const rangeToX = (ts) => chartLeft + ((ts - domainStart) / domainRange) * chartPlotWidth;
+    const plotMinX = chartLeft;
+    const plotMaxX = chartLeft + chartPlotWidth;
+    const pointXByTs = new Map(plottedPoints.map(point => [point.ts, point.x]));
+    const clampXToPlot = (x) => Math.max(plotMinX, Math.min(plotMaxX, x));
+    const rangeToX = (ts) => {
+      const pointX = pointXByTs.get(ts);
+      const calculatedX = pointX ?? chartLeft + ((ts - domainStart) / domainRange) * chartPlotWidth;
+      return clampXToPlot(calculatedX);
+    };
     const offlineRanges = buildOfflineTimelineRanges(points, domainStart, domainEnd, adaptiveGapMs)
       .map((range) => {
         const x1 = rangeToX(range.startTs);
         const x2 = rangeToX(range.endTs);
+        const left = Math.min(x1, x2);
+        const right = Math.max(x1, x2);
         return {
           ...range,
-          x: x1,
-          width: Math.max(0, x2 - x1),
-          x2
+          x: left,
+          fillX: left,
+          fillX2: right,
+          width: Math.max(0, right - left),
+          x2: right
         };
       })
       .filter(range => range.width > 0.5);
+    const offlineFillPath = buildOfflineFillPath(offlineRanges, chartTop, chartPlotHeight);
 
     const baseline = chartTop + chartPlotHeight;
     const linePath = buildBrokenSmoothPath(plottedPoints, adaptiveGapMs);
@@ -521,6 +546,7 @@ function ProfessionalMetricChart({
       path: linePath,
       areaPath,
       offlineRanges,
+      offlineFillPath,
       transform: 'none'
     };
   }, [data, visualDomain, metric, visualYDomain, chartLeft, chartPlotWidth, chartPlotHeight, chartTop]);
@@ -604,7 +630,14 @@ function ProfessionalMetricChart({
             <stop offset="62%" stopColor={metricConfig.color} stopOpacity="0.045" />
             <stop offset="100%" stopColor={metricConfig.color} stopOpacity="0" />
           </linearGradient>
-          <linearGradient id={`${chartId}-offline-fill`} x1="0" y1="0" x2="0" y2="1">
+          <linearGradient
+            id={`${chartId}-offline-fill`}
+            gradientUnits="userSpaceOnUse"
+            x1="0"
+            y1={chartTop}
+            x2="0"
+            y2={chartTop + chartPlotHeight}
+          >
             <stop offset="0%" stopColor="#ef4444" stopOpacity="0.11" />
             <stop offset="65%" stopColor="#ef4444" stopOpacity="0.045" />
             <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
@@ -656,25 +689,35 @@ function ProfessionalMetricChart({
         />
 
         <g clipPath={`url(#${chartId}-clip)`}>
-          {prepared.offlineRanges.map((range, index) => (
-            <g key={`offline-direct-${index}`} style={{ transition: 'opacity 180ms ease' }}>
-              <rect
-                x={range.x}
-                y={chartTop}
-                width={range.width}
-                height={chartPlotHeight}
-                fill={`url(#${chartId}-offline-fill)`}
+          {prepared.offlineFillPath && (
+            <g pointerEvents="none">
+              <path
+                d={prepared.offlineFillPath}
+                fill="#ef4444"
+                fillOpacity={isCompact ? 0.055 : 0.06}
+                shapeRendering="crispEdges"
               />
+              <path
+                d={prepared.offlineFillPath}
+                fill={`url(#${chartId}-offline-fill)`}
+                shapeRendering="crispEdges"
+              />
+            </g>
+          )}
+
+          {prepared.offlineRanges.map((range, index) => (
+            <g key={`offline-edge-${index}`} pointerEvents="none">
               {range.startInside && (
                 <line
                   x1={range.x}
                   x2={range.x}
                   y1={chartTop}
                   y2={chartTop + chartPlotHeight}
-                  className="stroke-red-400/35 dark:stroke-red-500/25"
+                  className="stroke-red-400/45 dark:stroke-red-500/35"
                   strokeDasharray="4 7"
-                  strokeWidth="1"
+                  strokeWidth="1.35"
                   vectorEffect="non-scaling-stroke"
+                  shapeRendering="geometricPrecision"
                 />
               )}
               {range.endInside && (
@@ -683,10 +726,11 @@ function ProfessionalMetricChart({
                   x2={range.x2}
                   y1={chartTop}
                   y2={chartTop + chartPlotHeight}
-                  className="stroke-red-400/35 dark:stroke-red-500/25"
+                  className="stroke-red-400/45 dark:stroke-red-500/35"
                   strokeDasharray="4 7"
-                  strokeWidth="1"
+                  strokeWidth="1.35"
                   vectorEffect="non-scaling-stroke"
+                  shapeRendering="geometricPrecision"
                 />
               )}
             </g>
