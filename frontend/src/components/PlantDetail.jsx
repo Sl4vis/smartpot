@@ -49,6 +49,8 @@ const DEMO_PLANT = {
 const LIVE_REFRESH_MS = 20000;
 const MAX_CHART_HOURS = 48;
 const MIN_ZOOM_RANGE_MS = 2 * 60 * 1000;
+const OFFLINE_GAP_MS = 3 * 60 * 1000;
+const CHART_ANIMATION_MS = 520;
 const CHART_LEFT_PAD = 52;
 const CHART_RIGHT_PAD = 16;
 
@@ -164,6 +166,81 @@ function clampChartValue(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function isSamePair(a, b) {
+  return Array.isArray(a) && Array.isArray(b) &&
+    a.length === 2 && b.length === 2 &&
+    Math.abs(a[0] - b[0]) < 0.5 &&
+    Math.abs(a[1] - b[1]) < 0.5;
+}
+
+function lerpPair(from, to, t) {
+  return [
+    from[0] + (to[0] - from[0]) * t,
+    from[1] + (to[1] - from[1]) * t
+  ];
+}
+
+function useAnimatedPair(targetPair, duration = CHART_ANIMATION_MS) {
+  const [animatedPair, setAnimatedPair] = useState(targetPair);
+  const frameRef = useRef(null);
+  const currentRef = useRef(targetPair);
+
+  useEffect(() => {
+    if (!Array.isArray(targetPair) || targetPair.length !== 2) return undefined;
+
+    if (!Array.isArray(currentRef.current) || currentRef.current.length !== 2) {
+      currentRef.current = targetPair;
+      setAnimatedPair(targetPair);
+      return undefined;
+    }
+
+    if (isSamePair(currentRef.current, targetPair)) {
+      currentRef.current = targetPair;
+      setAnimatedPair(targetPair);
+      return undefined;
+    }
+
+    const from = currentRef.current;
+    const to = targetPair;
+    const startedAt = performance.now();
+
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+
+    const tick = (now) => {
+      const rawProgress = Math.min(1, (now - startedAt) / duration);
+      const eased = easeOutCubic(rawProgress);
+      const next = lerpPair(from, to, eased);
+
+      currentRef.current = next;
+      setAnimatedPair(next);
+
+      if (rawProgress < 1) {
+        frameRef.current = requestAnimationFrame(tick);
+      } else {
+        currentRef.current = to;
+        setAnimatedPair(to);
+        frameRef.current = null;
+      }
+    };
+
+    // requestAnimationFrame beží podľa refresh-rate monitora, takže na 120 Hz paneli renderuje až 120 fps.
+    frameRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, [targetPair?.[0], targetPair?.[1], duration]);
+
+  return animatedPair;
+}
+
 function ProfessionalMetricChart({
   data,
   metric,
@@ -176,6 +253,10 @@ function ProfessionalMetricChart({
 }) {
   const [hover, setHover] = useState(null);
   const chartId = useMemo(() => `pro-chart-${metric}`, [metric]);
+  const animatedDomain = useAnimatedPair(domain, CHART_ANIMATION_MS);
+  const animatedYDomain = useAnimatedPair(yDomain, CHART_ANIMATION_MS);
+  const visualDomain = Array.isArray(animatedDomain) && animatedDomain.length === 2 ? animatedDomain : domain;
+  const visualYDomain = Array.isArray(animatedYDomain) && animatedYDomain.length === 2 ? animatedYDomain : yDomain;
 
   const prepared = useMemo(() => {
     const points = (Array.isArray(data) ? data : [])
@@ -193,18 +274,20 @@ function ProfessionalMetricChart({
         visiblePoints: [],
         path: '',
         areaPath: '',
+        offlineRanges: [],
         transform: 'translate(0px, 0px) scale(1, 1)'
       };
     }
 
-    const domainStart = domain[0];
-    const domainEnd = domain[1];
+    const domainStart = visualDomain[0];
+    const domainEnd = visualDomain[1];
     const domainRange = Math.max(1, domainEnd - domainStart);
-    const bufferEnd = points[points.length - 1].ts;
+    const latestPointTs = points[points.length - 1].ts;
+    const bufferEnd = Math.max(latestPointTs, domainEnd);
     const bufferStart = bufferEnd - MAX_CHART_HOURS * 60 * 60 * 1000;
     const bufferRange = Math.max(1, bufferEnd - bufferStart);
-    const yMin = yDomain[0];
-    const yMax = yDomain[1];
+    const yMin = visualYDomain[0];
+    const yMax = visualYDomain[1];
     const yRange = Math.max(0.0001, yMax - yMin);
 
     const plottedPoints = points
@@ -217,6 +300,34 @@ function ProfessionalMetricChart({
       });
 
     const visiblePoints = plottedPoints.filter(point => point.ts >= domainStart && point.ts <= domainEnd);
+    const offlineRanges = [];
+    const plottedByTime = plottedPoints.slice().sort((a, b) => a.ts - b.ts);
+
+    for (let i = 1; i < plottedByTime.length; i += 1) {
+      const previous = plottedByTime[i - 1];
+      const current = plottedByTime[i];
+      const offlineStart = previous.ts + OFFLINE_GAP_MS;
+      const offlineEnd = current.ts;
+
+      if (offlineEnd > offlineStart && offlineEnd >= domainStart && offlineStart <= domainEnd) {
+        const x1 = ((Math.max(offlineStart, bufferStart) - bufferStart) / bufferRange) * PRO_CHART_PLOT_WIDTH;
+        const x2 = ((Math.min(offlineEnd, bufferEnd) - bufferStart) / bufferRange) * PRO_CHART_PLOT_WIDTH;
+        if (x2 > x1) offlineRanges.push({ x: x1, width: x2 - x1 });
+      }
+    }
+
+    const lastKnownPoint = plottedByTime[plottedByTime.length - 1];
+    if (lastKnownPoint) {
+      const offlineStart = lastKnownPoint.ts + OFFLINE_GAP_MS;
+      const offlineEnd = domainEnd;
+
+      if (offlineEnd > offlineStart) {
+        const x1 = ((Math.max(offlineStart, bufferStart) - bufferStart) / bufferRange) * PRO_CHART_PLOT_WIDTH;
+        const x2 = ((Math.min(offlineEnd, bufferEnd) - bufferStart) / bufferRange) * PRO_CHART_PLOT_WIDTH;
+        if (x2 > x1) offlineRanges.push({ x: x1, width: x2 - x1 });
+      }
+    }
+
     const linePath = buildSmoothPath(plottedPoints);
     const firstPoint = plottedPoints[0];
     const lastPoint = plottedPoints[plottedPoints.length - 1];
@@ -234,12 +345,13 @@ function ProfessionalMetricChart({
       visiblePoints,
       path: linePath,
       areaPath,
+      offlineRanges,
       transform: `translate(${translateX}px, 0px) scale(${scaleX}, 1)`
     };
-  }, [data, domain, metric, yDomain]);
+  }, [data, visualDomain, metric, visualYDomain]);
 
   const handlePointerMove = useCallback((event) => {
-    if (!prepared.visiblePoints.length || !domain?.length) {
+    if (!prepared.visiblePoints.length || !visualDomain?.length) {
       setHover(null);
       return;
     }
@@ -248,7 +360,7 @@ function ProfessionalMetricChart({
     const plotLeftPx = (PRO_CHART_LEFT / PRO_CHART_WIDTH) * rect.width;
     const plotWidthPx = (PRO_CHART_PLOT_WIDTH / PRO_CHART_WIDTH) * rect.width;
     const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left - plotLeftPx) / Math.max(1, plotWidthPx)));
-    const targetTs = domain[0] + ratio * (domain[1] - domain[0]);
+    const targetTs = visualDomain[0] + ratio * (visualDomain[1] - visualDomain[0]);
 
     const nearest = prepared.visiblePoints.reduce((best, point) => {
       if (!best) return point;
@@ -266,7 +378,7 @@ function ProfessionalMetricChart({
       x,
       y: nearest.y
     });
-  }, [domain, prepared.visiblePoints]);
+  }, [visualDomain, prepared.visiblePoints]);
 
   const handlePointerLeave = useCallback(() => setHover(null), []);
   const safeTicks = Array.isArray(ticks) && ticks.length > 0 ? ticks : [];
@@ -307,7 +419,7 @@ function ProfessionalMetricChart({
         />
 
         {safeYTicks.map((value) => {
-          const ratio = (value - yDomain[0]) / Math.max(0.0001, yDomain[1] - yDomain[0]);
+          const ratio = (value - visualYDomain[0]) / Math.max(0.0001, visualYDomain[1] - visualYDomain[0]);
           const y = PRO_CHART_TOP + (1 - ratio) * PRO_CHART_PLOT_HEIGHT;
           return (
             <g key={`y-${value}`}>
@@ -348,9 +460,31 @@ function ProfessionalMetricChart({
               transform: prepared.transform,
               transformOrigin: '0px 0px',
               transformBox: 'view-box',
-              transition: 'transform 650ms cubic-bezier(0.22, 1, 0.36, 1)'
+              transition: 'none',
+              willChange: 'transform'
             }}
           >
+            {prepared.offlineRanges.map((range, index) => (
+              <g key={`offline-${index}`}>
+                <rect
+                  x={range.x}
+                  y={PRO_CHART_TOP}
+                  width={range.width}
+                  height={PRO_CHART_PLOT_HEIGHT}
+                  className="fill-red-400/10 dark:fill-red-500/10"
+                />
+                <line
+                  x1={range.x}
+                  x2={range.x}
+                  y1={PRO_CHART_TOP}
+                  y2={PRO_CHART_TOP + PRO_CHART_PLOT_HEIGHT}
+                  className="stroke-red-400/40 dark:stroke-red-500/30"
+                  strokeDasharray="5 6"
+                  strokeWidth="1"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            ))}
             {prepared.areaPath && (
               <path
                 d={prepared.areaPath}
@@ -398,7 +532,7 @@ function ProfessionalMetricChart({
         )}
 
         {safeTicks.map((tick) => {
-          const ratio = (tick - domain[0]) / Math.max(1, domain[1] - domain[0]);
+          const ratio = (tick - visualDomain[0]) / Math.max(1, visualDomain[1] - visualDomain[0]);
           const x = PRO_CHART_LEFT + ratio * PRO_CHART_PLOT_WIDTH;
           const label = formatTickTime(tick, showDateOnTicks).split('\n');
           return (
@@ -498,7 +632,8 @@ function processChartData(rawHistory, hours) {
     .sort((a, b) => a.ts - b.ts);
 
   const fallbackEnd = Date.now();
-  const rangeEnd = points.length > 0 ? points[points.length - 1].ts : fallbackEnd;
+  const latestPointTs = points.length > 0 ? points[points.length - 1].ts : fallbackEnd;
+  const rangeEnd = Math.max(latestPointTs, fallbackEnd);
   const rangeStart = rangeEnd - hours * 60 * 60 * 1000;
   const bufferStart = rangeEnd - MAX_CHART_HOURS * 60 * 60 * 1000;
 
@@ -1313,7 +1448,7 @@ export default function PlantDetail() {
                   {deviceStatus?.isOffline && (
                     <div className="flex items-center gap-1.5 text-[10px] text-sage-400 dark:text-green-700">
                       <span className="inline-block w-2 h-2 rounded-full bg-red-400/70 dark:bg-red-500/40" />
-                      Zariadenie offline
+                      Offline úsek je v grafe zvýraznený
                     </div>
                   )}
                 </div>
