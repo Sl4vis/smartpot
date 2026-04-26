@@ -50,7 +50,7 @@ const LIVE_REFRESH_MS = 20000;
 const MAX_CHART_HOURS = 48;
 const MIN_ZOOM_RANGE_MS = 2 * 60 * 1000;
 const OFFLINE_GAP_MS = 3 * 60 * 1000;
-const CHART_ANIMATION_MS = 520;
+const CHART_ANIMATION_MS = 860;
 const CHART_LEFT_PAD = 52;
 const CHART_RIGHT_PAD = 16;
 
@@ -166,8 +166,10 @@ function clampChartValue(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function easeOutCubic(t) {
-  return 1 - Math.pow(1 - t, 3);
+function easeInOutCubic(t) {
+  return t < 0.5
+    ? 4 * t * t * t
+    : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
 function isSamePair(a, b) {
@@ -212,7 +214,7 @@ function useAnimatedPair(targetPair, duration = CHART_ANIMATION_MS) {
 
     const tick = (now) => {
       const rawProgress = Math.min(1, (now - startedAt) / duration);
-      const eased = easeOutCubic(rawProgress);
+      const eased = easeInOutCubic(rawProgress);
       const next = lerpPair(from, to, eased);
 
       currentRef.current = next;
@@ -241,6 +243,86 @@ function useAnimatedPair(targetPair, duration = CHART_ANIMATION_MS) {
   return animatedPair;
 }
 
+function useElementSize() {
+  const ref = useRef(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return undefined;
+
+    const update = () => {
+      const rect = element.getBoundingClientRect();
+      setSize({ width: rect.width, height: rect.height });
+    };
+
+    update();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', update);
+      return () => window.removeEventListener('resize', update);
+    }
+
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+
+  return [ref, size];
+}
+
+function buildBrokenSmoothPath(points, maxGapMs = OFFLINE_GAP_MS) {
+  if (!points.length) return '';
+
+  const segments = [];
+  let current = [points[0]];
+
+  for (let i = 1; i < points.length; i += 1) {
+    if (points[i].ts - points[i - 1].ts > maxGapMs) {
+      segments.push(current);
+      current = [points[i]];
+    } else {
+      current.push(points[i]);
+    }
+  }
+
+  segments.push(current);
+
+  return segments
+    .filter(segment => segment.length > 0)
+    .map(segment => buildSmoothPath(segment))
+    .join(' ');
+}
+
+function buildBrokenAreaPath(points, baseline, maxGapMs = OFFLINE_GAP_MS) {
+  if (!points.length) return '';
+
+  const segments = [];
+  let current = [points[0]];
+
+  for (let i = 1; i < points.length; i += 1) {
+    if (points[i].ts - points[i - 1].ts > maxGapMs) {
+      segments.push(current);
+      current = [points[i]];
+    } else {
+      current.push(points[i]);
+    }
+  }
+
+  segments.push(current);
+
+  return segments
+    .filter(segment => segment.length > 1)
+    .map(segment => {
+      const line = buildSmoothPath(segment);
+      const first = segment[0];
+      const last = segment[segment.length - 1];
+      return `${line} L ${last.x} ${baseline} L ${first.x} ${baseline} Z`;
+    })
+    .join(' ');
+}
+
 function ProfessionalMetricChart({
   data,
   metric,
@@ -252,11 +334,29 @@ function ProfessionalMetricChart({
   showDateOnTicks
 }) {
   const [hover, setHover] = useState(null);
+  const [wrapRef, size] = useElementSize();
   const chartId = useMemo(() => `pro-chart-${metric}`, [metric]);
   const animatedDomain = useAnimatedPair(domain, CHART_ANIMATION_MS);
   const animatedYDomain = useAnimatedPair(yDomain, CHART_ANIMATION_MS);
   const visualDomain = Array.isArray(animatedDomain) && animatedDomain.length === 2 ? animatedDomain : domain;
   const visualYDomain = Array.isArray(animatedYDomain) && animatedYDomain.length === 2 ? animatedYDomain : yDomain;
+
+  const chartWidth = Math.max(320, Math.round(size.width || PRO_CHART_WIDTH));
+  const isCompact = chartWidth < 560;
+  const chartHeight = isCompact ? 245 : PRO_CHART_HEIGHT;
+  const chartTop = isCompact ? 12 : PRO_CHART_TOP;
+  const chartBottom = isCompact ? 46 : PRO_CHART_BOTTOM;
+  const chartLeft = isCompact ? 34 : PRO_CHART_LEFT;
+  const chartRight = isCompact ? 8 : PRO_CHART_RIGHT;
+  const chartPlotWidth = Math.max(1, chartWidth - chartLeft - chartRight);
+  const chartPlotHeight = Math.max(1, chartHeight - chartTop - chartBottom);
+  const xTicks = useMemo(() => {
+    const source = Array.isArray(ticks) && ticks.length > 0 ? ticks : generateTicks(visualDomain?.[0] || 0, visualDomain?.[1] || 1);
+    if (!isCompact || source.length <= 4) return source;
+
+    const compact = source.filter((_, index) => index === 0 || index === source.length - 1 || index % 2 === 0);
+    return compact.length > 4 ? [source[0], source[Math.floor(source.length / 3)], source[Math.floor(source.length * 2 / 3)], source[source.length - 1]] : compact;
+  }, [ticks, visualDomain, isCompact]);
 
   const prepared = useMemo(() => {
     const points = (Array.isArray(data) ? data : [])
@@ -293,52 +393,47 @@ function ProfessionalMetricChart({
     const plottedPoints = points
       .filter(point => point.ts >= bufferStart && point.ts <= bufferEnd)
       .map(point => {
-        const x = ((point.ts - bufferStart) / bufferRange) * PRO_CHART_PLOT_WIDTH;
+        const x = ((point.ts - bufferStart) / bufferRange) * chartPlotWidth;
         const safeValue = clampChartValue(point.value, yMin, yMax);
-        const y = PRO_CHART_TOP + (1 - ((safeValue - yMin) / yRange)) * PRO_CHART_PLOT_HEIGHT;
+        const y = chartTop + (1 - ((safeValue - yMin) / yRange)) * chartPlotHeight;
         return { ...point, x, y };
       });
 
     const visiblePoints = plottedPoints.filter(point => point.ts >= domainStart && point.ts <= domainEnd);
     const offlineRanges = [];
-    const plottedByTime = plottedPoints.slice().sort((a, b) => a.ts - b.ts);
+    const sortedByTime = plottedPoints.slice().sort((a, b) => a.ts - b.ts);
+    const rangeToX = (ts) => chartLeft + ((ts - domainStart) / domainRange) * chartPlotWidth;
 
-    for (let i = 1; i < plottedByTime.length; i += 1) {
-      const previous = plottedByTime[i - 1];
-      const current = plottedByTime[i];
-      const offlineStart = previous.ts + OFFLINE_GAP_MS;
-      const offlineEnd = current.ts;
+    const addOfflineRange = (startTs, endTs) => {
+      const clippedStart = Math.max(startTs, domainStart);
+      const clippedEnd = Math.min(endTs, domainEnd);
+      if (clippedEnd <= clippedStart) return;
+      const x1 = rangeToX(clippedStart);
+      const x2 = rangeToX(clippedEnd);
+      if (x2 > x1) offlineRanges.push({ x: x1, width: x2 - x1 });
+    };
 
-      if (offlineEnd > offlineStart && offlineEnd >= domainStart && offlineStart <= domainEnd) {
-        const x1 = ((Math.max(offlineStart, bufferStart) - bufferStart) / bufferRange) * PRO_CHART_PLOT_WIDTH;
-        const x2 = ((Math.min(offlineEnd, bufferEnd) - bufferStart) / bufferRange) * PRO_CHART_PLOT_WIDTH;
-        if (x2 > x1) offlineRanges.push({ x: x1, width: x2 - x1 });
+    if (sortedByTime.length > 0) {
+      const firstVisiblePoint = sortedByTime.find(point => point.ts >= domainStart && point.ts <= domainEnd);
+      if (firstVisiblePoint && firstVisiblePoint.ts - domainStart > OFFLINE_GAP_MS) {
+        addOfflineRange(domainStart, firstVisiblePoint.ts);
+      }
+
+      for (let i = 1; i < sortedByTime.length; i += 1) {
+        const previous = sortedByTime[i - 1];
+        const current = sortedByTime[i];
+        const offlineStart = previous.ts + OFFLINE_GAP_MS;
+        const offlineEnd = current.ts;
+        if (offlineEnd > offlineStart) addOfflineRange(offlineStart, offlineEnd);
       }
     }
 
-    const lastKnownPoint = plottedByTime[plottedByTime.length - 1];
-    if (lastKnownPoint) {
-      const offlineStart = lastKnownPoint.ts + OFFLINE_GAP_MS;
-      const offlineEnd = domainEnd;
-
-      if (offlineEnd > offlineStart) {
-        const x1 = ((Math.max(offlineStart, bufferStart) - bufferStart) / bufferRange) * PRO_CHART_PLOT_WIDTH;
-        const x2 = ((Math.min(offlineEnd, bufferEnd) - bufferStart) / bufferRange) * PRO_CHART_PLOT_WIDTH;
-        if (x2 > x1) offlineRanges.push({ x: x1, width: x2 - x1 });
-      }
-    }
-
-    const linePath = buildSmoothPath(plottedPoints);
-    const firstPoint = plottedPoints[0];
-    const lastPoint = plottedPoints[plottedPoints.length - 1];
-    const baseline = PRO_CHART_TOP + PRO_CHART_PLOT_HEIGHT;
-    const areaPath = linePath && firstPoint && lastPoint
-      ? `${linePath} L ${lastPoint.x} ${baseline} L ${firstPoint.x} ${baseline} Z`
-      : '';
-
-    const selectedStartX = ((domainStart - bufferStart) / bufferRange) * PRO_CHART_PLOT_WIDTH;
+    const baseline = chartTop + chartPlotHeight;
+    const linePath = buildBrokenSmoothPath(plottedPoints);
+    const areaPath = buildBrokenAreaPath(plottedPoints, baseline);
+    const selectedStartX = ((domainStart - bufferStart) / bufferRange) * chartPlotWidth;
     const scaleX = bufferRange / domainRange;
-    const translateX = PRO_CHART_LEFT - selectedStartX * scaleX;
+    const translateX = chartLeft - selectedStartX * scaleX;
 
     return {
       points: plottedPoints,
@@ -348,7 +443,7 @@ function ProfessionalMetricChart({
       offlineRanges,
       transform: `translate(${translateX}px, 0px) scale(${scaleX}, 1)`
     };
-  }, [data, visualDomain, metric, visualYDomain]);
+  }, [data, visualDomain, metric, visualYDomain, chartLeft, chartPlotWidth, chartPlotHeight, chartTop]);
 
   const handlePointerMove = useCallback((event) => {
     if (!prepared.visiblePoints.length || !visualDomain?.length) {
@@ -357,8 +452,8 @@ function ProfessionalMetricChart({
     }
 
     const rect = event.currentTarget.getBoundingClientRect();
-    const plotLeftPx = (PRO_CHART_LEFT / PRO_CHART_WIDTH) * rect.width;
-    const plotWidthPx = (PRO_CHART_PLOT_WIDTH / PRO_CHART_WIDTH) * rect.width;
+    const plotLeftPx = (chartLeft / chartWidth) * rect.width;
+    const plotWidthPx = (chartPlotWidth / chartWidth) * rect.width;
     const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left - plotLeftPx) / Math.max(1, plotWidthPx)));
     const targetTs = visualDomain[0] + ratio * (visualDomain[1] - visualDomain[0]);
 
@@ -372,37 +467,43 @@ function ProfessionalMetricChart({
       return;
     }
 
-    const x = PRO_CHART_LEFT + ratio * PRO_CHART_PLOT_WIDTH;
+    const x = chartLeft + ratio * chartPlotWidth;
     setHover({
       point: nearest,
       x,
       y: nearest.y
     });
-  }, [visualDomain, prepared.visiblePoints]);
+  }, [visualDomain, prepared.visiblePoints, chartLeft, chartPlotWidth, chartWidth]);
 
   const handlePointerLeave = useCallback(() => setHover(null), []);
-  const safeTicks = Array.isArray(ticks) && ticks.length > 0 ? ticks : [];
+  const safeTicks = xTicks;
   const safeYTicks = Array.isArray(yTicks) && yTicks.length > 0 ? yTicks : [];
 
   return (
-    <div className="relative h-[270px] select-none">
+    <div ref={wrapRef} className="relative h-[245px] sm:h-[270px] select-none overflow-hidden rounded-2xl">
       <svg
-        viewBox={`0 0 ${PRO_CHART_WIDTH} ${PRO_CHART_HEIGHT}`}
+        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
         className="h-full w-full overflow-visible"
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerLeave}
+        preserveAspectRatio="none"
       >
         <defs>
           <clipPath id={`${chartId}-clip`}>
-            <rect x={PRO_CHART_LEFT} y={PRO_CHART_TOP} width={PRO_CHART_PLOT_WIDTH} height={PRO_CHART_PLOT_HEIGHT} rx="6" />
+            <rect x={chartLeft} y={chartTop} width={chartPlotWidth} height={chartPlotHeight} rx="8" />
           </clipPath>
           <linearGradient id={`${chartId}-fill`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={metricConfig.color} stopOpacity="0.20" />
             <stop offset="55%" stopColor={metricConfig.color} stopOpacity="0.07" />
             <stop offset="100%" stopColor={metricConfig.color} stopOpacity="0" />
           </linearGradient>
+          <linearGradient id={`${chartId}-offline-fill`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.11" />
+            <stop offset="65%" stopColor="#ef4444" stopOpacity="0.045" />
+            <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
+          </linearGradient>
           <filter id={`${chartId}-glow`} x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feGaussianBlur stdDeviation="2.4" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -411,32 +512,32 @@ function ProfessionalMetricChart({
         </defs>
 
         <rect
-          x={PRO_CHART_LEFT}
-          y={PRO_CHART_TOP}
-          width={PRO_CHART_PLOT_WIDTH}
-          height={PRO_CHART_PLOT_HEIGHT}
+          x={chartLeft}
+          y={chartTop}
+          width={chartPlotWidth}
+          height={chartPlotHeight}
           fill="transparent"
         />
 
         {safeYTicks.map((value) => {
           const ratio = (value - visualYDomain[0]) / Math.max(0.0001, visualYDomain[1] - visualYDomain[0]);
-          const y = PRO_CHART_TOP + (1 - ratio) * PRO_CHART_PLOT_HEIGHT;
+          const y = chartTop + (1 - ratio) * chartPlotHeight;
           return (
             <g key={`y-${value}`}>
               <line
-                x1={PRO_CHART_LEFT}
-                x2={PRO_CHART_LEFT + PRO_CHART_PLOT_WIDTH}
+                x1={chartLeft}
+                x2={chartLeft + chartPlotWidth}
                 y1={y}
                 y2={y}
                 className="stroke-sage-200/70 dark:stroke-green-500/10"
                 strokeDasharray="4 6"
               />
               <text
-                x={PRO_CHART_LEFT - 12}
+                x={chartLeft - (isCompact ? 7 : 12)}
                 y={y + 4}
                 textAnchor="end"
                 className="fill-sage-500 dark:fill-green-700"
-                fontSize="12"
+                fontSize={isCompact ? 10 : 12}
                 fontWeight="500"
               >
                 {Number.isInteger(value) ? value : value.toFixed(1)}
@@ -446,15 +547,37 @@ function ProfessionalMetricChart({
         })}
 
         <line
-          x1={PRO_CHART_LEFT}
-          x2={PRO_CHART_LEFT + PRO_CHART_PLOT_WIDTH}
-          y1={PRO_CHART_TOP + PRO_CHART_PLOT_HEIGHT}
-          y2={PRO_CHART_TOP + PRO_CHART_PLOT_HEIGHT}
+          x1={chartLeft}
+          x2={chartLeft + chartPlotWidth}
+          y1={chartTop + chartPlotHeight}
+          y2={chartTop + chartPlotHeight}
           className="stroke-sage-300 dark:stroke-green-500/30"
           strokeWidth="1"
         />
 
         <g clipPath={`url(#${chartId}-clip)`}>
+          {prepared.offlineRanges.map((range, index) => (
+            <g key={`offline-direct-${index}`} style={{ transition: 'opacity 220ms ease' }}>
+              <rect
+                x={range.x}
+                y={chartTop}
+                width={range.width}
+                height={chartPlotHeight}
+                fill={`url(#${chartId}-offline-fill)`}
+              />
+              <line
+                x1={range.x}
+                x2={range.x}
+                y1={chartTop}
+                y2={chartTop + chartPlotHeight}
+                className="stroke-red-400/35 dark:stroke-red-500/25"
+                strokeDasharray="4 7"
+                strokeWidth="1"
+                vectorEffect="non-scaling-stroke"
+              />
+            </g>
+          ))}
+
           <g
             style={{
               transform: prepared.transform,
@@ -464,27 +587,6 @@ function ProfessionalMetricChart({
               willChange: 'transform'
             }}
           >
-            {prepared.offlineRanges.map((range, index) => (
-              <g key={`offline-${index}`}>
-                <rect
-                  x={range.x}
-                  y={PRO_CHART_TOP}
-                  width={range.width}
-                  height={PRO_CHART_PLOT_HEIGHT}
-                  className="fill-red-400/10 dark:fill-red-500/10"
-                />
-                <line
-                  x1={range.x}
-                  x2={range.x}
-                  y1={PRO_CHART_TOP}
-                  y2={PRO_CHART_TOP + PRO_CHART_PLOT_HEIGHT}
-                  className="stroke-red-400/40 dark:stroke-red-500/30"
-                  strokeDasharray="5 6"
-                  strokeWidth="1"
-                  vectorEffect="non-scaling-stroke"
-                />
-              </g>
-            ))}
             {prepared.areaPath && (
               <path
                 d={prepared.areaPath}
@@ -498,7 +600,7 @@ function ProfessionalMetricChart({
                 d={prepared.path}
                 fill="none"
                 stroke={metricConfig.color}
-                strokeWidth="2.6"
+                strokeWidth={isCompact ? 2.4 : 2.6}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
@@ -509,13 +611,13 @@ function ProfessionalMetricChart({
           </g>
         </g>
 
-        {hover?.point && (
+        {hover?.point && !isCompact && (
           <g pointerEvents="none">
             <line
               x1={hover.x}
               x2={hover.x}
-              y1={PRO_CHART_TOP}
-              y2={PRO_CHART_TOP + PRO_CHART_PLOT_HEIGHT}
+              y1={chartTop}
+              y2={chartTop + chartPlotHeight}
               stroke={metricConfig.color}
               strokeOpacity="0.45"
               strokeDasharray="4 5"
@@ -533,32 +635,32 @@ function ProfessionalMetricChart({
 
         {safeTicks.map((tick) => {
           const ratio = (tick - visualDomain[0]) / Math.max(1, visualDomain[1] - visualDomain[0]);
-          const x = PRO_CHART_LEFT + ratio * PRO_CHART_PLOT_WIDTH;
+          const x = chartLeft + ratio * chartPlotWidth;
           const label = formatTickTime(tick, showDateOnTicks).split('\n');
           return (
             <text
               key={`x-${tick}`}
               x={x}
-              y={PRO_CHART_TOP + PRO_CHART_PLOT_HEIGHT + 22}
+              y={chartTop + chartPlotHeight + (isCompact ? 18 : 22)}
               textAnchor={ratio < 0.05 ? 'start' : ratio > 0.95 ? 'end' : 'middle'}
               className="fill-sage-500 dark:fill-green-700"
-              fontSize="12"
+              fontSize={isCompact ? 10 : 12}
               fontWeight="500"
             >
               {label.map((part, index) => (
-                <tspan key={`${tick}-${index}`} x={x} dy={index === 0 ? 0 : 14}>{part}</tspan>
+                <tspan key={`${tick}-${index}`} x={x} dy={index === 0 ? 0 : 12}>{part}</tspan>
               ))}
             </text>
           );
         })}
       </svg>
 
-      {hover?.point && (
+      {hover?.point && !isCompact && (
         <div
           className="pointer-events-none absolute z-20 rounded-xl border border-white/70 bg-white/95 px-3 py-2 text-xs shadow-xl shadow-black/10 backdrop-blur-md dark:border-green-500/20 dark:bg-[#07120d]/95 dark:shadow-black/30"
           style={{
-            left: `${Math.min(88, Math.max(8, (hover.x / PRO_CHART_WIDTH) * 100))}%`,
-            top: `${Math.min(72, Math.max(8, (hover.y / PRO_CHART_HEIGHT) * 100))}%`,
+            left: `${Math.min(88, Math.max(8, (hover.x / chartWidth) * 100))}%`,
+            top: `${Math.min(72, Math.max(8, (hover.y / chartHeight) * 100))}%`,
             transform: 'translate(-50%, -110%)'
           }}
         >
@@ -575,13 +677,21 @@ function ProfessionalMetricChart({
 }
 
 
+function getResponsiveChartLeftPad(rect) {
+  return rect.width < 560 ? 34 : CHART_LEFT_PAD;
+}
+
+function getResponsiveChartRightPad(rect) {
+  return rect.width < 560 ? 8 : CHART_RIGHT_PAD;
+}
+
 function getChartWidth(rect) {
-  return Math.max(1, rect.width - CHART_LEFT_PAD - CHART_RIGHT_PAD);
+  return Math.max(1, rect.width - getResponsiveChartLeftPad(rect) - getResponsiveChartRightPad(rect));
 }
 
 function getRelativeChartX(clientX, rect) {
   const chartWidth = getChartWidth(rect);
-  return Math.max(0, Math.min(1, (clientX - rect.left - CHART_LEFT_PAD) / chartWidth));
+  return Math.max(0, Math.min(1, (clientX - rect.left - getResponsiveChartLeftPad(rect)) / chartWidth));
 }
 
 function getTouchDistance(touchA, touchB) {
@@ -633,7 +743,9 @@ function processChartData(rawHistory, hours) {
 
   const fallbackEnd = Date.now();
   const latestPointTs = points.length > 0 ? points[points.length - 1].ts : fallbackEnd;
-  const rangeEnd = Math.max(latestPointTs, fallbackEnd);
+  // Graf ukotvíme na posledné reálne meranie, nie na Date.now().
+  // Tak nevzniká prázdny/lagujúci úsek na pravej strane, keď zariadenie chvíľu neposlalo dáta.
+  const rangeEnd = latestPointTs;
   const rangeStart = rangeEnd - hours * 60 * 60 * 1000;
   const bufferStart = rangeEnd - MAX_CHART_HOURS * 60 * 60 * 1000;
 
