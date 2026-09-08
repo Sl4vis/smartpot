@@ -2,9 +2,9 @@
 
 # 🪴 SmartPot
 
-**Monitoruj svoje izbové rastliny cez ESP32 a zisti, kedy naozaj treba poliať — nie kedy si myslíš, že treba.**
+**Monitor your houseplants with an ESP32 and find out when they actually need water — not when you think they do.**
 
-Full-stack IoT aplikácia, ktorá zbiera dáta zo senzorov v kvetináči, kreslí z nich históriu a cez AI ti povie, v akom stave rastlina je.
+A full-stack IoT app that collects sensor data from the pot, charts its history, and uses AI to tell you how the plant is doing.
 
 [![Node](https://img.shields.io/badge/node-%3E%3D18-3ECF8E?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![React](https://img.shields.io/badge/react-18-58A6FF?style=flat-square&logo=react&logoColor=white)](https://react.dev)
@@ -17,110 +17,110 @@ Full-stack IoT aplikácia, ktorá zbiera dáta zo senzorov v kvetináči, kresl�
 ---
 
 > [!NOTE]
-> Sem pridaj screenshot alebo GIF dashboardu. Podľa štatistík je to jediná vec, ktorá zvýši
-> počet ľudí, čo si projekt naozaj skúsia, viac než akýkoľvek text.
+> Add a screenshot or GIF of the dashboard here. It will do more to get people to actually
+> try the project than any amount of text.
 
-## Obsah
+## Contents
 
-- [Prečo SmartPot](#prečo-smartpot)
-- [Funkcie](#funkcie)
-- [Rýchly štart](#rýchly-štart)
-- [Konfigurácia](#konfigurácia)
-- [Architektúra](#architektúra)
-- [API referencia](#api-referencia)
+- [Why SmartPot](#why-smartpot)
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Architecture](#architecture)
+- [API reference](#api-reference)
 - [ESP32 firmware](#esp32-firmware)
-- [Nasadenie](#nasadenie)
+- [Deployment](#deployment)
 - [Roadmap](#roadmap)
-- [Prispievanie](#prispievanie)
-- [Licencia](#licencia)
-- [Kontakt](#kontakt)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact](#contact)
 
 ---
 
-## Prečo SmartPot
+## Why SmartPot
 
-Bežné vlhkomery do kvetináča ukazujú jedno číslo a nič si nepamätajú. SmartPot rieši tri veci navyše:
+An ordinary soil moisture meter shows a single number and remembers nothing. SmartPot adds three things on top:
 
-- **História namiesto okamihu** — vidíš trend za 48 hodín, nie jeden údaj
-- **Odhad namiesto hádania** — smart watering ti povie, koľko dní zostáva do ďalšieho polievania na základe skutočnej krivky vysychania
-- **Notifikácia namiesto kontrolovania** — push príde do telefónu, keď rastlina alebo zariadenie potrebujú pozornosť
+- **History instead of a snapshot** — you see the trend over 48 hours, not one reading
+- **Estimates instead of guesswork** — smart watering tells you how long until the next watering, based on the actual drying curve
+- **Notifications instead of checking** — a push arrives on your phone when the plant or the device needs attention
 
-Sleduje **vlhkosť pôdy**, **teplotu**, **vlhkosť vzduchu** a **osvetlenie**.
+It tracks **soil moisture**, **temperature**, **air humidity** and **light**.
 
 ---
 
-## Funkcie
+## Features
 
-| Oblasť | Čo to vie |
+| Area | What it does |
 |---|---|
-| **Dashboard** | Prehľad všetkých rastlín, health score z AI analýzy, status zariadenia, počet neprečítaných alertov |
-| **Detail rastliny** | Grafy za 6/12/24/48 h, prepínanie metrík, zoom a posun, zvýraznené offline zóny |
-| **Smart watering** | Odhad do ďalšieho polievania, trend vlhkosti, overenie reakcie senzora po poliatí |
-| **AI analýza** | Vyhodnotenie stavu rastliny cez Groq, s automatickým fallbackom na Gemini |
-| **Alerty** | Samostatná stránka, zoskupenie podľa rastliny, označovanie ako prečítané |
-| **Web Push** | Notifikácie do prehliadača aj PWA, pravidelný digest, upozornenie na offline/online zariadenie |
-| **Mobil** | Responzívny layout, hamburger navbar, bottom-sheet edit modal |
+| **Dashboard** | Overview of all plants, health score from AI analysis, device status, unread alert count |
+| **Plant detail** | Charts over 6/12/24/48 h, metric switching, zoom and pan, highlighted offline gaps |
+| **Smart watering** | Estimate until next watering, moisture trend, sensor response check after watering |
+| **AI analysis** | Plant health assessment via Groq, with automatic fallback to Gemini |
+| **Alerts** | Dedicated page, grouped per plant, mark as read |
+| **Web Push** | Browser and PWA notifications, periodic digest, device offline/online alerts |
+| **Mobile** | Responsive layout, hamburger navbar, bottom-sheet edit modal |
 
 <details>
-<summary><b>Podrobný rozpis funkcií</b></summary>
+<summary><b>Full feature breakdown</b></summary>
 
 ### Dashboard
-- prehľad všetkých rastlín na jednej obrazovke
-- health score z poslednej AI analýzy
-- rýchly status rastliny a zariadenia
-- počet neprečítaných alertov pri rastline
-- responzívne karty pre desktop aj mobil
+- all plants on a single screen
+- health score from the latest AI analysis
+- quick plant and device status
+- unread alert count per plant
+- responsive cards for desktop and mobile
 
-### Detail rastliny
-- aktuálne hodnoty všetkých metrík
-- prepínanie medzi metrikami: pôda, teplota, vzduch, svetlo
-- história meraní za 6h / 12h / 24h / 48h
-- zvýraznené offline zóny zariadenia v grafe
-- zoom a posun grafu na desktope aj mobile
-- záznam manuálneho polievania
-- úprava a zmazanie rastliny
+### Plant detail
+- current values for every metric
+- switch between metrics: soil, temperature, air, light
+- measurement history over 6h / 12h / 24h / 48h
+- device offline periods highlighted in the chart
+- chart zoom and pan on both desktop and mobile
+- manual watering log
+- edit and delete a plant
 
-### Notifikácie
-- test subscription priamo cez backend
-- pravidelný digest problémov
-- samostatné notifikácie pri zmene stavu zariadenia
-- stručné texty typu `Kaktus potrebuje pozornosť` alebo `Treba poliať (14% pôda)`
+### Notifications
+- test subscription directly through the backend
+- periodic digest of open problems
+- separate notifications on device state change
+- short notification copy such as `Cactus needs attention` or `Needs water (14% soil)`
 
 </details>
 
 ---
 
-## Rýchly štart
+## Quick start
 
-### Požiadavky
+### Requirements
 
-| Nutné | Voliteľné |
+| Required | Optional |
 |---|---|
-| Node.js 18+ a npm | Azure IoT Hub |
-| Supabase projekt | VAPID kľúče pre Web Push |
-| Groq **alebo** Gemini API kľúč | ESP32 s pripojenými senzormi |
+| Node.js 18+ and npm | Azure IoT Hub |
+| A Supabase project | VAPID keys for Web Push |
+| Groq **or** Gemini API key | ESP32 with sensors attached |
 
-Bez ESP32 sa aplikácia spustí tiež — dáta si naplň cez `npm run seed`.
+The app runs without an ESP32 — populate it with `npm run seed` instead.
 
-### 1. Databáza
+### 1. Database
 
-Vytvor Supabase projekt, otvor **SQL Editor** a spusti obsah `backend/supabase-migration.sql`.
+Create a Supabase project, open the **SQL Editor** and run the contents of `backend/supabase-migration.sql`.
 
 ### 2. Backend
 
 ```bash
 cd backend
-cp .env.example .env      # doplň Supabase a AI kľúče
+cp .env.example .env      # fill in Supabase and AI keys
 npm install
-npm run seed              # voliteľné: testovacie dáta
+npm run seed              # optional: sample data
 npm run dev
 ```
 
-Beží na `http://localhost:3001`.
+Runs on `http://localhost:3001`.
 
 ### 3. Frontend
 
-V novom termináli:
+In a new terminal:
 
 ```bash
 cd frontend
@@ -129,18 +129,18 @@ npm install
 npm run dev
 ```
 
-Otvor `http://localhost:5173`.
+Open `http://localhost:5173`.
 
-### Alternatíva: Docker
+### Alternative: Docker
 
 ```bash
 docker-compose up --build
 ```
 
 > [!IMPORTANT]
-> Databáza nie je súčasťou compose stacku — aj v Dockeri sa používa externý Supabase projekt.
+> The database is not part of the compose stack — Docker still uses an external Supabase project.
 
-### Overenie
+### Verify
 
 ```bash
 curl http://localhost:3001/api/health
@@ -148,7 +148,7 @@ curl http://localhost:3001/api/health
 
 ---
 
-## Konfigurácia
+## Configuration
 
 <details>
 <summary><b>backend/.env</b></summary>
@@ -159,7 +159,7 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_KEY=your-service-role-key
 
-# AI (stačí jeden, Gemini slúži ako fallback)
+# AI (one is enough, Gemini acts as fallback)
 GROQ_API_KEY=your-groq-api-key
 GEMINI_API_KEY=your-gemini-api-key
 
@@ -193,14 +193,14 @@ VITE_API_URL=http://localhost:3001/api
 
 ---
 
-## Architektúra
+## Architecture
 
 ```text
-ESP32 + senzory (DHT22, capacitive soil, BH1750)
+ESP32 + sensors (DHT22, capacitive soil, BH1750)
    │
    ▼
 Backend API (Node.js / Express)
-   ├─ AI analýza (Groq → Gemini fallback)
+   ├─ AI analysis (Groq → Gemini fallback)
    ├─ Web Push scheduler
    └─ Azure IoT Hub listener
    │
@@ -212,13 +212,13 @@ Frontend (React / Vite / Tailwind / Recharts)
 ```
 
 <details>
-<summary><b>Technológie a štruktúra priečinkov</b></summary>
+<summary><b>Tech stack and folder structure</b></summary>
 
 **Frontend:** React 18 · Vite 5 · React Router DOM · Tailwind CSS · Recharts · Lucide React · Axios
 
 **Backend:** Express · Supabase JS client · Helmet · CORS · Morgan · express-rate-limit · web-push · Azure Event Hubs
 
-**Služby:** Supabase PostgreSQL · Groq API · Gemini API · Azure IoT Hub
+**Services:** Supabase PostgreSQL · Groq API · Gemini API · Azure IoT Hub
 
 **Hardware:** ESP32 · DHT22 · Capacitive Soil Moisture Sensor · BH1750
 
@@ -239,20 +239,20 @@ smartpot-main/
 
 ---
 
-## API referencia
+## API reference
 
-| Endpoint | Účel |
+| Endpoint | Purpose |
 |---|---|
-| `GET /api/health` | Healthcheck |
-| `/api/plants` | CRUD rastlín a watering log |
-| `/api/sensors` | Ingest dát, história, posledné meranie, status zariadenia |
-| `/api/ai` | AI analýza stavu a návrh thresholdov |
-| `/api/dashboard` | Overview a alerty |
-| `/api/notifications` | Push konfigurácia, subscribe, unsubscribe, test |
+| `GET /api/health` | Health check |
+| `/api/plants` | Plant CRUD and watering log |
+| `/api/sensors` | Data ingest, history, latest reading, device status |
+| `/api/ai` | Health analysis and threshold suggestions |
+| `/api/dashboard` | Overview and alerts |
+| `/api/notifications` | Push config, subscribe, unsubscribe, test |
 
-**Frontend routes:** `/` dashboard · `/plant/:id` detail · `/add` nová rastlina · `/alerts` alerty
+**Frontend routes:** `/` dashboard · `/plant/:id` detail · `/add` new plant · `/alerts` alerts
 
-Podrobná dokumentácia: [`docs/DOKUMENTACIA.md`](docs/DOKUMENTACIA.md)
+Full documentation: [`docs/DOKUMENTACIA.md`](docs/DOKUMENTACIA.md)
 
 ---
 
@@ -260,39 +260,39 @@ Podrobná dokumentácia: [`docs/DOKUMENTACIA.md`](docs/DOKUMENTACIA.md)
 
 Sketch: `esp32/smart_plant_pot/smart_plant_pot.ino`
 
-1. Otvor v Arduino IDE
-2. Nainštaluj knižnice podľa hlavičky súboru
-3. Nastav Wi-Fi údaje, `DEVICE_ID` a API / IoT endpoint
-4. Nahraj do ESP32
+1. Open it in the Arduino IDE
+2. Install the libraries listed at the top of the file
+3. Set your Wi-Fi credentials, `DEVICE_ID` and the API / IoT endpoint
+4. Flash it to the ESP32
 
-Firmware vie posielať dáta cez Azure IoT Hub pipeline aj priamo do backendu.
+The firmware can send data through the Azure IoT Hub pipeline or straight to the backend.
 
 ---
 
-## Nasadenie
+## Deployment
 
-Projekt sa nasadzuje po častiach:
+The project deploys in parts:
 
-| Časť | Kde |
+| Part | Where |
 |---|---|
-| Frontend | Vercel, Netlify, Cloud Run, vlastný Nginx |
+| Frontend | Vercel, Netlify, Cloud Run, your own Nginx |
 | Backend | Azure App Service, Render, Railway, VPS |
-| Databáza | Supabase |
+| Database | Supabase |
 | IoT ingest | Azure IoT Hub |
 
 <details>
-<summary><b>Push notifikácie na iPhone</b></summary>
+<summary><b>Push notifications on iPhone</b></summary>
 
-Web Push na iOS funguje spoľahlivo len cez PWA nainštalovanú na plochu:
+Web Push on iOS only works reliably through a PWA installed to the home screen:
 
-1. Otvor appku v Safari
-2. Zvoľ **Pridať na plochu**
-3. Spúšťaj ju z ikony na ploche, nie zo Safari
+1. Open the app in Safari
+2. Tap **Add to Home Screen**
+3. Launch it from the home screen icon, not from Safari
 
 </details>
 
 <details>
-<summary><b>npm skripty</b></summary>
+<summary><b>npm scripts</b></summary>
 
 **Backend:** `npm run dev` · `npm start` · `npm run seed` · `npm run lint` · `npm run check`
 
@@ -304,40 +304,40 @@ Web Push na iOS funguje spoľahlivo len cez PWA nainštalovanú na plochu:
 
 ## Roadmap
 
-- [ ] Kalibračný wizard pre senzor vlhkosti pôdy
+- [ ] Calibration wizard for the soil moisture sensor
 - [ ] Device health panel (Wi-Fi, heartbeat, uptime, firmware)
-- [ ] 7-dňové a 30-dňové pohľady na trendy
-- [ ] Presnejšia detekcia reakcie senzora po poliatí
-- [ ] Autentifikácia a multi-user režim
-- [ ] Export histórie meraní
+- [ ] 7-day and 30-day trend views
+- [ ] More accurate sensor response detection after watering
+- [ ] Authentication and multi-user mode
+- [ ] Measurement history export
 
 ---
 
-## Prispievanie
+## Contributing
 
-Pull requesty vítané. Pred väčšou zmenou otvor issue, nech si to najprv prejdeme.
+Pull requests are welcome. For anything substantial, open an issue first so we can talk it through.
 
-1. Forkni repozitár a vytvor vetvu: `git checkout -b feature/nazov`
-2. Pred commitom spusti `npm run check` v backende aj frontende
-3. Commit správy píš v [Conventional Commits](https://www.conventionalcommits.org) formáte
-4. Otvor pull request s popisom, čo sa mení a prečo
+1. Fork the repo and create a branch: `git checkout -b feature/name`
+2. Run `npm run check` in both backend and frontend before committing
+3. Write commit messages in [Conventional Commits](https://www.conventionalcommits.org) format
+4. Open a pull request describing what changed and why
 
-Chybu hlás cez [GitHub Issues](../../issues) — pridaj kroky na zopakovanie, očakávané a skutočné správanie.
+Report bugs through [GitHub Issues](../../issues) — include reproduction steps, expected behaviour and actual behaviour.
 
 ---
 
-## Licencia
+## License
 
-Školský a osobný projekt. Kód je bez explicitnej licencie, čo znamená, že **všetky práva sú vyhradené** a nikto ho nesmie legálne používať ani forkovať.
+School and personal project. The code carries no explicit license, which means **all rights are reserved** and nobody may legally use or fork it.
 
 > [!TIP]
-> Ak chceš, aby si projekt mohli ľudia pozrieť a použiť, pridaj súbor `LICENSE` s MIT licenciou
-> a nahraď tento odstavec riadkom: `MIT © Slavomír Hodor`.
+> If you want people to be able to try and reuse the project, add a `LICENSE` file with the MIT
+> license and replace this paragraph with: `MIT © Slavomír Hodor`.
 
 ---
 
-## Kontakt
+## Contact
 
 **Slavomír Hodor** — [GitHub @Sl4vis](https://github.com/Sl4vis) · [LinkedIn](https://www.linkedin.com/in/slavom%C3%ADr-hodor-6642ab36b/)
 
-Otázky k projektu píš radšej do [Issues](../../issues), nech odpoveď nájdu aj ostatní.
+For project questions, prefer [Issues](../../issues) so the answer is visible to everyone.
